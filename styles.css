@@ -60,6 +60,15 @@
   --perspective-ratio: 3.5;
   --perspective: 1400px;  /* computed by script.js from --perspective-ratio;
                              this value only covers the first paint */
+
+  /* Arrange <-> Refine mode morph. Per-tile flight, not a CSS transition —
+     script.js drives it with the Web Animations API so an 8-tile stagger and a
+     mid-flight re-toggle (cancel and restart) are both easy. Duration/stagger
+     are read with the same token()/parseFloat convention as the flip tokens
+     above; the ease is read as a raw string since it isn't numeric. */
+  --morph-duration: 320ms;
+  --morph-stagger: 28ms;
+  --morph-ease: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 * { box-sizing: border-box; }
@@ -154,6 +163,7 @@ html, body {
    Grid
    ========================================================================== */
 .grid-wrap {
+  position: relative;
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
@@ -163,7 +173,15 @@ html, body {
   padding: 0 40px;
 }
 
+/* Arrange and Refine are both absolutely positioned within .grid-wrap (rather
+   than flex-centered siblings) so they can overlap during the mode morph —
+   the same centre point either way, so nothing shifts outside a morph. Each
+   still centres its own content, since absolute children drop out of the
+   parent's flex layout. */
 .grid {
+  position: absolute;
+  inset: 0;
+  place-content: center;
   display: grid;
   grid-template-columns: repeat(4, var(--tile-w));
   grid-template-rows: repeat(2, var(--tile-h));
@@ -373,6 +391,8 @@ html, body {
    Refine — booklet spread
    ========================================================================== */
 .refine {
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -579,6 +599,15 @@ html, body {
   .page-content {
     transition: none;
   }
+}
+
+/* Mode morph in flight — both surfaces are briefly visible together. `inert`
+   on .grid/.refine (script.js) already blocks interaction and focus; this is
+   the same pointer-events safety net bury() uses alongside inert, for
+   browsers where it doesn't reach hover/click. */
+body.is-morphing .grid,
+body.is-morphing .refine {
+  pointer-events: none;
 }
 
 /* ==========================================================================
@@ -1219,9 +1248,17 @@ html, body {
   bottom: 24px;
   left: 50%;
   transform: translate(-50%, 8px);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  /* Wide enough for "Word documents and audio files can't be added." on one
+     line, but never past the viewport on a narrow window. */
+  max-width: min(460px, calc(100vw - 48px));
+  text-align: center;
   background: var(--ink);
   color: var(--white);
   font-size: 12px;
+  line-height: 1.45;
   letter-spacing: 0.02em;
   padding: 10px 14px;
   border-radius: 6px;
@@ -1234,6 +1271,13 @@ html, body {
 .notice.is-visible {
   opacity: 1;
   transform: translate(-50%, 0);
+}
+
+/* Second and later lines explain or offer the way out — present, but not
+   competing with the first line for the glance. */
+.notice-line--sub {
+  font-size: 11px;
+  opacity: 0.68;
 }
 
 /* ==========================================================================

@@ -57,6 +57,39 @@ center cut).
 - Refine deliberately has **no** drag / delete / replace — structural moves stay
   in Arrange (§3).
 
+### Rejected drops (branch `edge-cases`)
+A drop is never silently partly-ignored — whatever `assignPhotos` declines to
+place comes back as a toast. Three cases, one code path (`reportDrop`):
+
+- **Over capacity.** Reports what *landed*, not what didn't: "Only 7 of 10
+  photos were added." plus "A zine has 8 pages — delete one to swap another in."
+  The count is the number of empty slots that got filled, so it reads 7 when the
+  cover was already occupied and 8 into a fresh zine. Nothing was dropped into a
+  full zine keeps its own line ("All 8 pages are full…").
+- **Unsupported types are named**, not lumped under "images only" — `FILE_KINDS`
+  maps MIME (falling back to extension, since a drop from some file managers has
+  an empty `type`) onto a plural label, and the toast lists the distinct kinds:
+  "Word documents and audio files can’t be added." An unrecognised extension
+  names itself (".xyz files"). More than three kinds collapses to "other files".
+- **Replace behaves identically** — same rejection line, and dropping several
+  photos on a filled slot now says so ("Replaced with the first photo — 3 more
+  skipped.") instead of discarding the rest quietly.
+
+Two things worth knowing:
+- **HEIC and PSD are in `FILE_KINDS` even though they are `image/*`.** Neither
+  paints in an `<img>`, so the plain `type.startsWith("image/")` gate used to let
+  them through as a permanently blank page. HEIC especially — it's what an iPhone
+  hands over.
+- **`setPhoto`'s `probe.onerror` is the net under the table.** Any other
+  undecodable `image/*` (exotic TIFF, JPEG XL, a truncated file) empties the slot
+  again and names the file, so `FILE_KINDS` only has to cover what's worth
+  naming rather than track codec support. It is the one place that calls
+  `render()` from an async callback; safe because it can only fire moments after
+  a drop, never while the cover fields are being typed into.
+
+`notify()` now takes an array as well as a string; lines after the first are set
+quieter, and multi-line notices dwell 5s instead of 3.2s.
+
 ## 6. First-run / empty state
 - Non-blocking inline hint (hand-drawn "add your pics" style). No modal, no
   banner-as-CTA.
@@ -114,6 +147,8 @@ Phased; Claude stops for review after each phase:
 8. ✅ Seamless turn — pile-relative depth. Fixes a mid-turn tear at the gutter
    that phase 7 shipped with. Built from a 17-frame storyboard the user supplied
    2026-07-30. Also added the dev flip tuner (`#tune`).
+9. ✅ Mode morph — toggling Arrange↔Refine flies all 8 pages together instead
+   of cutting between surfaces.
 
 Deferred to MVP 2: iPad/mobile responsiveness + tap-to-select.
 Deferred out of phase 8: the pages' *curvature* (§ Phase 8 notes).
@@ -175,6 +210,7 @@ way to navigate it:
 | Reorder | drag-to-reorder; DOM-only during the drag, `commitOrder()` on drop |
 | Refine — booklet spread | `SPREADS`, `setMode`, `renderRefine`, `buildPage` |
 | Refine — the book | `depthAt`, `slotAtDepth`, `applyScene`, `buildFace`, `buildBook`, `instantly`, `bury`, `liftRange`, `goToSpread` |
+| Mode morph | `pageFacesCamera`, `bookBoxFor`, `morphModes`, `finishMorph`, `cancelMorph` |
 | Refine — scrub bar | `spreadFraction` / `spreadLabel` / `spreadAria`, `buildScrubber`, `syncScrubber`, `spreadFromPointer`, pointer + keyboard handlers |
 | Refine — crop editor | `openEditor` / `closeEditor`, `renderEditor`, `setZoom`, pointer + wheel handlers |
 | Export — sheet geometry | `SHEET_MM`, `CELL_MM`, `CELL_INSET_MM`, `fitPage`, `PAGE_MM/PX`, `IMPOSITION` |
@@ -230,7 +266,56 @@ config in `.claude/launch.json`), then open http://localhost:5173.
 Add `#tune` to the URL for the flip tuner (§ Phase 8 notes).
 
 Phase 4 was reviewed and signed off by the user on 2026-07-29.
-Phases 5, 6a, 6b, 7 and 8 are built and awaiting review.
+Phases 5, 6a, 6b, 7, 8 and 9 are built and awaiting review.
+
+### Phase 9 notes — mode morph
+- **The Arrange tiles are the actors in both directions, never the book's own
+  leaves.** A leaf carries two pages (front `2j`, back `2j+1`) at once, so it
+  can't fly to two different grid cells — but each Arrange tile is one page,
+  so it can fly to (or from) exactly one leaf box. The book itself is never
+  individually animated; it just cross-fades in or out as a whole underneath
+  the flight.
+- **One function, reversed.** `morphModes(toRefine)` computes the same
+  translate+scale delta between an Arrange tile's resting rect and its page's
+  book-side box regardless of direction — flying in swaps the keyframe order
+  (identity → book box) and flying out swaps it back (book box → identity).
+  Whichever tile parity a leaf isn't showing fades the other way (opacity
+  1→0 in, 0→1 out), timed to land exactly as `bury()` would hide or reveal it.
+- **Book-side geometry is computed, not measured.** `bookBoxFor()` reuses the
+  same `depthAt()`/`slotAtDepth()` the book's own `applyScene()` positions
+  itself with, converted from book-relative to viewport coordinates against
+  one `bookEl.getBoundingClientRect()`. Reusing the real functions means the
+  flight can't drift out of sync with wherever the book actually is.
+- **Deliberate approximation: the flying tiles don't rotate.** At rest the
+  book's pages sit under a few degrees of perspective tilt (`BOOK_TILT`); the
+  flying tiles are flat rectangles, so they land a few px off along the outer
+  edge. Covered by the cross-fade — the tile is fading out at the same spot
+  the real (tilted) page is fading in. If it ever reads as a pop, the fix is a
+  `rotateY` on the tile with `transform-origin` at the spine; held off adding
+  it until it's shown to matter.
+- **Both surfaces are mounted at once for the length of the flight** — a
+  deliberate, commented exception to the "call `render()`, not the surface
+  renderers" rule (§13), because computing the flight needs both sets of
+  rects to exist simultaneously. `.grid`/`.refine` moved from flex-centered
+  siblings to absolutely-positioned, self-centering overlays in `.grid-wrap`
+  to make that possible without either one visibly shifting outside a morph.
+- **Stagger reads as deck order.** Flying in, the back page leaves its cell
+  first and the cover arrives last (it ends up on top of the pile); flying
+  out, the reverse — the cover leaves the pile first.
+- **Interruption is a plain snap, not a reconciled mid-state.** Animations are
+  driven by the Web Animations API rather than CSS transitions specifically so
+  a re-toggle mid-flight (or a resize, via the `layoutSurfaces()` guard) can
+  `.cancel()` them — which reverts every tile to its untouched underlying
+  style, i.e. plain identity, since the flight never writes an inline
+  transform directly. A generation counter (`morphGen`, the same idiom as
+  `flipGen`) stops a stale flight's completion handler from clobbering a
+  newer one that started after it.
+- **One case skips the morph entirely:** closing the crop editor back to
+  Arrange does the old instant swap. Flying tiles out of a single full-bleed
+  editor frame wouldn't read as anything, and it's a rare path.
+- Not built: an editor-open → morph path, and true page curvature/rotation in
+  the flight (see the approximation note above) — both left for if they turn
+  out to matter after the user tries it.
 
 ### Phase 5 notes
 - **One control, two jobs.** The scrub bar navigates *and* indicates position,
@@ -507,3 +592,6 @@ tap-to-select), which §2 defers.
 4. **Try the phase 7 flip itself** — drag the scrub bar, click a distant label,
    type into the cover fields on a front-facing page. None of this has been
    opened in a browser by Claude — by design, testing is the user's pass.
+5. **Try the phase 9 mode morph** — toggle Arrange↔Refine at different spreads,
+   and try re-toggling mid-flight and resizing mid-flight. Also unopened in a
+   browser by Claude.

@@ -85,6 +85,20 @@ function setPhoto(index, file) {
     // here would blow away a focused cover input.
     refreshCropTransforms();
   };
+  // Last net under the FILE_KINDS table: a format that is image/* but that this
+  // browser cannot decode (an exotic TIFF, a JPEG XL, a truncated download)
+  // would otherwise sit in the page as a filled slot that paints nothing and
+  // prints blank. Unlike onload this has to re-render — the slot goes back to
+  // being empty — but it can only fire moments after a drop or a pick, never
+  // while the cover fields are being typed into.
+  probe.onerror = () => {
+    if (page.photo !== photo) return; // already superseded by another pick
+    URL.revokeObjectURL(url);
+    page.photo = null;
+    render();
+    syncChrome();
+    notify([`“${file.name}” couldn’t be opened.`, PHOTO_FORMATS]);
+  };
   probe.src = url;
 }
 
@@ -97,19 +111,139 @@ function deletePhoto(index) {
   syncChrome();
 }
 
+/* --------------------------------------------------------------------------
+   Naming what was rejected
+
+   The picker carries accept="image/*", but a drop bypasses it entirely, so a
+   .docx only ever gets named here. Each kind matches on MIME first and falls
+   back to the extension, because files dragged out of some file managers — and
+   every dropped folder — arrive with an empty `type`.
+
+   HEIC and Photoshop are in the table even though both are image/*: no browser
+   paints them in an <img>, so without an entry they would clear the gate and
+   land as a blank page. Anything else undecodable is caught by setPhoto's
+   probe.onerror, so this table only has to cover what's worth naming.
+   -------------------------------------------------------------------------- */
+
+const PHOTO_FORMATS = "Minikomi takes JPEG, PNG, GIF, WebP or AVIF.";
+
+const FILE_KINDS = [
+  { label: "HEIC photos", mime: /^image\/hei[cf]/, ext: ["heic", "heif"] },
+  { label: "Photoshop files", mime: /photoshop/, ext: ["psd", "psb"] },
+  {
+    label: "Word documents",
+    mime: /msword|wordprocessingml|opendocument\.text/,
+    ext: ["doc", "docx", "odt", "rtf", "pages"],
+  },
+  { label: "PDFs", mime: /^application\/pdf$/, ext: ["pdf"] },
+  {
+    label: "Spreadsheets",
+    mime: /ms-excel|spreadsheetml|opendocument\.spreadsheet/,
+    ext: ["xls", "xlsx", "ods", "csv", "numbers"],
+  },
+  {
+    label: "Presentations",
+    mime: /ms-powerpoint|presentationml|opendocument\.presentation/,
+    ext: ["ppt", "pptx", "odp", "key"],
+  },
+  {
+    label: "Audio files",
+    mime: /^audio\//,
+    ext: ["mp3", "wav", "m4a", "aac", "flac", "ogg", "aiff", "wma"],
+  },
+  {
+    label: "Videos",
+    mime: /^video\//,
+    ext: ["mp4", "mov", "avi", "mkv", "webm", "m4v"],
+  },
+  {
+    label: "Archives",
+    mime: /zip|x-rar|x-7z|x-tar|gzip/,
+    ext: ["zip", "rar", "7z", "tar", "gz", "dmg", "iso"],
+  },
+  { label: "Text files", mime: /^text\//, ext: ["txt", "md", "log"] },
+];
+
+// Only consulted when `type` is empty — a browser that knows the format at all
+// reports it as image/*.
+const PHOTO_EXT = ["jpg", "jpeg", "png", "gif", "webp", "avif", "bmp", "ico"];
+
+function extensionOf(name) {
+  const dot = name.lastIndexOf(".");
+  return dot > 0 ? name.slice(dot + 1).toLowerCase() : "";
+}
+
+function matchedKind(file) {
+  const type = file.type || "";
+  const ext = extensionOf(file.name || "");
+  return (
+    FILE_KINDS.find(
+      (kind) =>
+        (type && kind.mime.test(type)) || (ext && kind.ext.includes(ext))
+    ) || null
+  );
+}
+
+function isPhoto(file) {
+  if (matchedKind(file)) return false;
+  const type = file.type || "";
+  if (type.startsWith("image/")) return true;
+  return !type && PHOTO_EXT.includes(extensionOf(file.name || ""));
+}
+
+function joinLabels(labels) {
+  if (labels.length < 2) return labels[0] || "";
+  return `${labels.slice(0, -1).join(", ")} and ${labels[labels.length - 1]}`;
+}
+
+/** "Word documents and audio files can't be added." */
+function rejectionMessage(rejects) {
+  const labels = [];
+  for (const file of rejects) {
+    const kind = matchedKind(file);
+    // An unrecognised extension names itself — ".xyz files" beats "other files"
+    // when the drop was a single mystery file.
+    const ext = extensionOf(file.name || "");
+    const label = kind ? kind.label : ext ? `.${ext} files` : "unnamed files";
+    if (!labels.includes(label)) labels.push(label);
+  }
+  const listed = labels.length > 3 ? [...labels.slice(0, 2), "other files"] : labels;
+  const sentence = `${joinLabels(listed)} can’t be added.`;
+  return sentence.charAt(0).toUpperCase() + sentence.slice(1);
+}
+
+/**
+ * One toast for whatever a drop couldn't do. Rejected kinds lead, because a
+ * wrong file type is the harder failure; counts follow. When rejection is the
+ * only thing to say, the list of accepted formats rides along as the answer to
+ * "then what can I add?".
+ */
+function reportDrop(rejects, ...countLines) {
+  const lines = countLines.filter(Boolean);
+  if (rejects.length > 0) lines.unshift(rejectionMessage(rejects));
+  if (lines.length === 1 && rejects.length > 0) lines.push(PHOTO_FORMATS);
+  if (lines.length > 0) notify(lines);
+}
+
 /**
  * Routes a set of dropped/picked files into pages.
  * - replace: swaps the photo at startIndex, first file only
  * - fill: startIndex (when empty) first, then remaining empties — forward
  *   from startIndex before wrapping — so picking 3 photos on page 5 fills
  *   5, 6, 7 rather than jumping back to the start.
+ *
+ * Anything it declines to place is reported through reportDrop, so a drop is
+ * never silently partly-ignored.
  */
 function assignPhotos(fileList, startIndex, mode) {
   const all = Array.from(fileList || []);
-  const files = all.filter((f) => f.type.startsWith("image/"));
+  if (all.length === 0) return;
+
+  const files = all.filter(isPhoto);
+  const rejects = all.filter((f) => !isPhoto(f));
 
   if (files.length === 0) {
-    if (all.length > 0) notify("Only image files can be added.");
+    reportDrop(rejects);
     return;
   }
 
@@ -117,6 +251,13 @@ function assignPhotos(fileList, startIndex, mode) {
     setPhoto(startIndex, files[0]);
     render();
     syncChrome();
+    const extra = files.length - 1;
+    reportDrop(
+      rejects,
+      extra > 0
+        ? `Replaced with the first photo — ${extra} more skipped.`
+        : ""
+    );
     return;
   }
 
@@ -135,20 +276,28 @@ function assignPhotos(fileList, startIndex, mode) {
   }
 
   if (targets.length === 0) {
-    notify("All 8 pages are full — delete or replace one first.");
+    reportDrop(rejects, "All 8 pages are full — delete or replace one first.");
     return;
   }
 
   const used = Math.min(files.length, targets.length);
   for (let i = 0; i < used; i++) setPhoto(targets[i], files[i]);
 
-  const skipped = files.length - used;
-  if (skipped > 0) {
-    notify(`Only 8 pages — ${skipped} photo${skipped > 1 ? "s" : ""} skipped.`);
-  }
-
   render();
   syncChrome();
+
+  // Report what landed rather than what didn't: the count of imported photos is
+  // what the user is about to check against the grid.
+  const skipped = files.length - used;
+  reportDrop(
+    rejects,
+    skipped > 0
+      ? `Only ${used} of ${files.length} photos ${
+          used === 1 ? "was" : "were"
+        } added.`
+      : "",
+    skipped > 0 ? "A zine has 8 pages — delete one to swap another in." : ""
+  );
 }
 
 function openPicker(index, mode) {
@@ -502,16 +651,26 @@ const SPREADS = [[0], [1, 2], [3, 4], [5, 6], [7]];
 
 function setMode(mode) {
   if (state.mode === mode) return;
+  // Closing the crop editor back to Arrange is the one case that skips the
+  // morph: flying tiles out of a single full-bleed editor frame wouldn't read
+  // as anything, and it's a rare path.
+  const wasEditing = state.editing !== null;
   state.mode = mode;
   if (mode !== "refine") state.editing = null;
 
   modeBtns.forEach((btn) =>
     btn.classList.toggle("active", btn.dataset.mode === mode)
   );
-  grid.hidden = mode !== "arrange";
-  refineEl.hidden = mode !== "refine";
 
-  render();
+  if (reducedMotion || wasEditing) {
+    grid.hidden = mode !== "arrange";
+    refineEl.hidden = mode !== "refine";
+    render();
+    syncChrome();
+    return;
+  }
+
+  morphModes(mode === "refine");
   syncChrome();
 }
 
@@ -877,6 +1036,220 @@ function goToSpread(index) {
   applyScene(target);
   if (target !== from) liftRange(from, target);
   syncScrubber();
+}
+
+/* ==========================================================================
+   Mode morph (Arrange <-> Refine)
+   ==========================================================================
+   Toggling modes flies all 8 pages together rather than cutting: flying in,
+   the Arrange tiles converge on the fanned deck; flying out, they leave it and
+   land back on the 4x2 grid. Same choreography both ways — only the keyframe
+   order (and which surface fades in vs. out) flips.
+
+   The tiles themselves are always what fly, never the book's own leaves.
+   `slotAtDepth`/`depthAt` (the book's own geometry, see "Refine — the book"
+   above) give each page's book-side box; that box is applied to the matching
+   Arrange tile as a flat translate+scale — no rotation, no perspective. The
+   two faces sharing a leaf (2j front, 2j+1 back) land on the same box, which
+   is correct: one arrives at opacity 1 as the book's real page, the other
+   fades to 0 exactly as bury() would hide it. The small rest tilt the real
+   book applies (BOOK_TILT/LEAF_WEDGE) is left out of the flight on purpose —
+   the book cross-fades in underneath at the same spot, so the couple of
+   pixels of difference along the outer edge never becomes visible on its own.
+
+   Both surfaces stay mounted and share .grid-wrap (see .grid/.refine in
+   styles.css) for the length of the flight — a deliberate exception to
+   render()'s "one dispatcher" rule, needed because both sets of rects have to
+   exist at once to compute the flight. */
+
+const MORPH_DURATION = token("--morph-duration", 320);
+const MORPH_STAGGER = reducedMotion ? 0 : token("--morph-stagger", 28);
+const MORPH_EASE = rootStyle.getPropertyValue("--morph-ease").trim() || "ease";
+
+let morphGen = 0;
+let morphAnimations = [];
+
+function cancelMorph() {
+  // .cancel() reverts to the underlying style, which for these tiles is
+  // always empty (their flight is pure WAAPI, never written to inline
+  // transform/opacity directly) — so a cancelled morph always snaps cleanly
+  // to plain identity, a safe state regardless of which direction it was mid-
+  // flight in.
+  morphAnimations.forEach((a) => {
+    try {
+      a.cancel();
+    } catch {
+      /* already finished */
+    }
+  });
+  morphAnimations = [];
+}
+
+/**
+ * True if page `p`'s leaf is showing that page's face (as opposed to its
+ * sibling on the other side of the same leaf) once the book settles at spread
+ * `i`. Mirrors the visibility half of bury() in applyScene() exactly — kept
+ * in sync deliberately, since this is what decides which of a leaf's two
+ * pages fades in versus out during the flight.
+ */
+function pageFacesCamera(p, i) {
+  const j = p >> 1;
+  const flipped = j < i;
+  const isFront = p % 2 === 0;
+  return isFront ? !flipped : flipped;
+}
+
+/**
+ * Flat (no-rotation) viewport box for page `p`'s leaf at spread `i`, derived
+ * from the same slotAtDepth() the real book positions itself with. `left`
+ * flips meaning on a turned leaf — see the comment on slotAtDepth — so the
+ * subtraction here is the same one applyScene never needs, because it's
+ * positioning a leaf that then does its own rotating; here there is no
+ * rotation, so the visual edge has to be resolved up front.
+ */
+function bookBoxFor(p, i, bookRect) {
+  const j = p >> 1;
+  const flipped = j < i;
+  const slot = slotAtDepth(flipped, depthAt(j, i));
+  const visualLeft = flipped ? slot.left - slot.w : slot.left;
+  return {
+    left: bookRect.left + visualLeft,
+    top: bookRect.top + (bookRect.height - slot.h) / 2,
+    width: slot.w,
+    height: slot.h,
+  };
+}
+
+function finishMorph(toRefine, tiles) {
+  tiles.forEach((tile) => {
+    tile.getAnimations().forEach((a) => a.cancel());
+    tile.style.transform = "";
+    tile.style.opacity = "";
+    tile.style.zIndex = "";
+  });
+  refineEl.getAnimations().forEach((a) => a.cancel());
+  refineEl.style.opacity = "";
+  refineEl.style.zIndex = "";
+  grid.style.zIndex = "";
+
+  grid.hidden = toRefine;
+  refineEl.hidden = !toRefine;
+  grid.inert = false;
+  refineEl.inert = false;
+  document.body.classList.remove("is-morphing");
+}
+
+/**
+ * Flies all 8 Arrange tiles between the grid and the book. Called from
+ * setMode() instead of render() for this one transition — both surfaces have
+ * to stay mounted at once so their rects can be measured, which is the
+ * deliberate exception noted above.
+ */
+function morphModes(toRefine) {
+  const gen = ++morphGen;
+  cancelMorph();
+
+  document.activeElement?.blur?.();
+  document.body.classList.add("is-morphing");
+  grid.inert = true;
+  refineEl.inert = true;
+
+  // Both directions need Arrange's natural (resting) tile rects — flying in,
+  // that's the start; flying out, the end. renderArrange() is cheap and
+  // guarantees fresh elements with no leftover drag/focus state.
+  grid.hidden = false;
+  renderArrange();
+
+  refineEl.hidden = false;
+  browseEl.hidden = false;
+  editorEl.hidden = true;
+  const spread = state.spread;
+  if (toRefine) {
+    // Flying out, the book is already sitting at this spread — only flying in
+    // needs it (re)built and landed instantly before its rect is read.
+    buildBook();
+    instantly(() => applyScene(spread));
+    syncScrubber();
+  }
+
+  // Grid always renders on top while tiles are in flight, whichever surface
+  // is conceptually "arriving" — the flight is the thing to look at. Its own
+  // opacity is set by the animate() call below, whose first keyframe matches.
+  grid.style.zIndex = "2";
+  refineEl.style.zIndex = "1";
+
+  const bookRect = bookEl.getBoundingClientRect();
+  const tiles = [];
+
+  for (let p = 0; p < PAGE_COUNT; p++) {
+    const tile = grid.children[p];
+    if (!tile) continue;
+    tiles.push(tile);
+
+    const tileRect = tile.getBoundingClientRect();
+    const box = bookBoxFor(p, spread, bookRect);
+    const visible = pageFacesCamera(p, spread);
+
+    const dx = box.left + box.width / 2 - (tileRect.left + tileRect.width / 2);
+    const dy = box.top + box.height / 2 - (tileRect.top + tileRect.height / 2);
+    const sx = box.width / tileRect.width;
+    const sy = box.height / tileRect.height;
+
+    const identity = "translate(0px, 0px) scale(1, 1)";
+    const inBook = `translate(${dx.toFixed(2)}px, ${dy.toFixed(2)}px) scale(${sx.toFixed(4)}, ${sy.toFixed(4)})`;
+
+    // Deck order: flying in, the back page departs its cell first and the
+    // cover lands last (it ends on top of the pile); flying out, the reverse
+    // — the cover leaves the pile first.
+    const order = toRefine ? PAGE_COUNT - 1 - p : p;
+    const d = depthAt(p >> 1, spread);
+    tile.style.zIndex = String(visible ? 300 - d : 50 + d);
+
+    const keyframes = toRefine
+      ? [
+          { transform: identity, opacity: 1 },
+          { transform: inBook, opacity: visible ? 1 : 0 },
+        ]
+      : [
+          { transform: inBook, opacity: visible ? 1 : 0 },
+          { transform: identity, opacity: 1 },
+        ];
+
+    morphAnimations.push(
+      tile.animate(keyframes, {
+        duration: MORPH_DURATION,
+        delay: order * MORPH_STAGGER,
+        easing: MORPH_EASE,
+        fill: "both",
+      })
+    );
+  }
+
+  // The book cross-fades as a whole, timed to the tiles' full stagger span —
+  // invisible/visible for the first half, then fading over the second, so it
+  // only becomes the thing on screen once tiles have started arriving.
+  const span = MORPH_DURATION + (PAGE_COUNT - 1) * MORPH_STAGGER;
+  morphAnimations.push(
+    refineEl.animate(
+      toRefine
+        ? [
+            { opacity: 0, offset: 0 },
+            { opacity: 0, offset: 0.5 },
+            { opacity: 1, offset: 1 },
+          ]
+        : [
+            { opacity: 1, offset: 0 },
+            { opacity: 0, offset: 0.5 },
+            { opacity: 0, offset: 1 },
+          ],
+      { duration: span, easing: "linear", fill: "both" }
+    )
+  );
+
+  Promise.all(morphAnimations.map((a) => a.finished.catch(() => {}))).then(() => {
+    if (gen !== morphGen) return; // superseded by a newer morph mid-flight
+    finishMorph(toRefine, tiles);
+  });
 }
 
 /* ==========================================================================
@@ -1748,11 +2121,28 @@ buildFoldDots();
    ========================================================================== */
 
 let noticeTimer;
+
+/**
+ * `message` is one string, or several — the first line carries what happened
+ * and the rest are set quieter, for the explanation and the way out. Multi-line
+ * notices linger longer, since there's more to read.
+ */
 function notify(message) {
-  noticeEl.textContent = message;
+  const lines = Array.isArray(message) ? message.filter(Boolean) : [message];
+  if (lines.length === 0) return;
+
+  noticeEl.replaceChildren(
+    ...lines.map((text, i) => {
+      const line = document.createElement("span");
+      line.className = i === 0 ? "notice-line" : "notice-line notice-line--sub";
+      line.textContent = text;
+      return line;
+    })
+  );
   noticeEl.classList.add("is-visible");
   clearTimeout(noticeTimer);
-  noticeTimer = setTimeout(() => noticeEl.classList.remove("is-visible"), 3200);
+  const dwell = lines.length > 1 ? 5000 : 3200;
+  noticeTimer = setTimeout(() => noticeEl.classList.remove("is-visible"), dwell);
 }
 
 function syncChrome() {
@@ -1856,6 +2246,18 @@ function setTileVars(wVar, hVar, tile) {
 function layoutSurfaces() {
   const wrap = document.querySelector(".grid-wrap");
   if (!wrap) return;
+
+  // A resize mid-morph invalidates every rect the flight measured against.
+  // Cancel it and land directly in the mode already being switched to, rather
+  // than let stale positions finish animating into a size that no longer
+  // exists.
+  if (morphAnimations.length) {
+    const toRefine = state.mode === "refine";
+    const tiles = Array.from(grid.children);
+    morphGen++;
+    cancelMorph();
+    finishMorph(toRefine, tiles);
+  }
 
   const pad = getComputedStyle(wrap);
   const availW =
