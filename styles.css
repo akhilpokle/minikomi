@@ -30,11 +30,21 @@
   --flip-duration: 400ms;
   --flip-ease: cubic-bezier(0.645, 0.045, 0.355, 1);
   --book-tilt: 5;        /* deg of open-book lean; unitless so JS can read it */
-  /* Half-angle of the V each leaf is folded into, in deg. Constant, never
-     animated: it is what keeps the gutter covered while a leaf passes edge-on.
-     0 makes every leaf flat again, i.e. the pre-phase-8 build. The leaf's rest
-     angles absorb it, so the resting book looks the same at any value. */
-  --leaf-wedge: 5;
+  /* Half-angle of the V each leaf is folded into, in deg.
+
+     0, AND IT SHOULD STAY 0 unless you have a reason. A leaf's two faces are the
+     two sides of ONE sheet — pages 2 and 3 of the zine, back to back. Any wedge
+     splays them apart, and near edge-on the sheet renders as two separate
+     ribbons with a gap down the middle instead of one page turning. At 0 they are
+     coplanar and backface-visibility shows exactly one, which is what makes the
+     flip read as solid paper.
+
+     It was added to cover the mid-turn gutter, which binding every page at the
+     spine now does properly (see slotAtDepth) — so it buys nothing and costs the
+     split. Kept as a knob only because it is the hook a future curved-page
+     treatment would hang off. The rest angles absorb it, so the resting book
+     looks identical at any value. */
+  --leaf-wedge: 0;
   /* The fan. Every page is BOUND AT THE SPINE: a receding page keeps its inner
      edge exactly on the spine and splays at the fore-edge only, the way a real
      book's pages do. That is why the fan grows the page's WIDTH instead of
@@ -467,23 +477,17 @@ html, body {
 }
 
 /* Each face hangs off its own hinge, pivoting on the same spine as the leaf, so
-   the two faces sit at a constant 2 x --leaf-wedge to each other instead of
-   back-to-back. That is the whole fix for the mid-turn gutter:
+   the two faces CAN be splayed apart by --leaf-wedge. At the default of 0 they
+   are not, and they should not be: a leaf's faces are the two sides of one sheet,
+   and splaying them makes a turning page render as two ribbons with a gap down
+   the middle rather than as one page. See --leaf-wedge for the full reasoning.
 
-   A flat leaf has one orientation, so when it passes edge-on it covers nothing,
-   and the gap its neighbours have opened at the spine shows through. Folded into
-   a V, its two faces straddle edge-on at +/- the wedge, so at the midpoint the
-   front face still projects cos(85deg) = 8.7% of a page width to the right of
-   the spine and the back face the same to the left — against a gap of 2.2% a
-   side. The gutter is covered about 4x over exactly where it used to tear.
-
-   Constant, never animated. A wedge that opened and closed would be zero at
-   both ends of the turn, and this book writes only rest states (see above) —
-   a transition from 0 to 0 does nothing. Being static also means it costs no
-   transition, cannot desynchronise from the leaf, and behaves identically on a
-   scrub and on a click. readFlipTokens() folds the wedge into the leaf's rest
-   angles, so the resting book is unchanged at any value, and 0 is exactly the
-   flat build. */
+   This structure exists at all because a wedge was once how the mid-turn gutter
+   got covered. Binding every page at the spine does that properly now, so the
+   hinges are inert wrappers at the default — kept because they are where a curved
+   page treatment would attach, and because zeroing a token is a safer default
+   than deleting the mechanism. readFlipTokens() folds the wedge into the leaf's
+   rest angles, so the resting book is identical at any value. */
 .leaf-hinge {
   position: absolute;
   inset: 0;
