@@ -611,8 +611,8 @@ const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matc
 /* The flip's feel. Every value here derives from a token in styles.css :root —
    `let` and re-read by readFlipTokens() rather than frozen at load, so the
    tuner can move them live. Nothing else may write them. */
-let FAN_X_RATIO; // step out per depth, as a ratio of page width
-let FAN_W_RATIO; // narrow per depth
+let FAN_OUT_RATIO; // fore-edge extension per pile step, as a ratio of page width
+let FAN_SHRINK_RATIO; // height reduction per pile step
 let BOOK_TILT; // deg of open-book lean
 let LEAF_WEDGE; // half-angle of the V each leaf is folded into, deg
 let PERSPECTIVE_RATIO; // of page width, so the look is size-invariant
@@ -642,15 +642,16 @@ let FLIP_MS; // tracks --flip-duration; drives the settle timer in liftRange
  * will rest tilted by the wedge.
  */
 function readFlipTokens() {
-  FAN_X_RATIO = token("--fan-x-ratio", 0.04375);
-  FAN_W_RATIO = token("--fan-w-ratio", 0.03125);
+  FAN_OUT_RATIO = token("--fan-out-ratio", 0.0125);
+  FAN_SHRINK_RATIO = token("--fan-shrink-ratio", 0.03125);
   BOOK_TILT = token("--book-tilt", 5);
   LEAF_WEDGE = token("--leaf-wedge", 5);
   PERSPECTIVE_RATIO = token("--perspective-ratio", 3.5);
   PAPER_Z = token("--paper-z", 0.5);
-  // MAX_DEPTH - 1, not MAX_DEPTH: pile depth collapses the top two pages of each
-  // pile onto 0, so the deepest page fans one step less far than it used to.
-  BOOK_SPAN = 2 + 2 * (MAX_DEPTH - 1) * (FAN_X_RATIO - FAN_W_RATIO); // 2.05
+  // Each side reaches (1 + out * maxPileDepth) page-widths from the spine, and
+  // maxPileDepth is MAX_DEPTH - 1 because pile depth collapses the top two pages
+  // of each pile onto 0.
+  BOOK_SPAN = 2 * (1 + FAN_OUT_RATIO * (MAX_DEPTH - 1)); // 2.05
   ROT_RIGHT = -(BOOK_TILT + LEAF_WEDGE);
   ROT_FLIPPED = -(180 - BOOK_TILT - LEAF_WEDGE);
   FLIP_MS = reducedMotion ? 0 : token("--flip-duration", 400);
@@ -672,18 +673,28 @@ function depthAt(j, i) {
 }
 
 /**
- * A leaf's rest state at a given depth. `left` means different things per side:
- * a flipped leaf pivots on its left edge, so after rotateY(-180) its box `left`
- * is its visual RIGHT edge — hence the subtraction.
+ * A leaf's rest state at a given depth.
  *
- * PILE DEPTH is the whole of phase 8. Geometry comes from `max(0, d - 1)`, not
- * from `d`, which puts the top TWO pages of a pile on the same box: full size,
- * inner edge exactly on the spine. So the page under the turning leaf is already
- * in its final place and gets *uncovered* rather than grown, and the page on the
- * far side stays put rather than receding — which is what seals the gutter. The
- * fan survives untouched, because it now only ever applies to pages already
- * hidden behind a full-size one. Verified: 0px exposure on every side that has a
- * page, versus 25.4px before, at the same fan settings.
+ * EVERY PAGE IS BOUND AT THE SPINE. `left` is always `pageW` — the spine — for
+ * both sides, and since a leaf pivots on `transform-origin: left center`, no
+ * rotation ever moves that edge. So the inner edge of every page, at every
+ * depth, sits exactly on the spine. Two consequences:
+ *   - the gutter cannot open, at any scene or fraction, trivially;
+ *   - the deck reads as a *bound* book. The fan used to translate whole pages
+ *     away from the spine, which detached them and made the book look like a
+ *     pile of loose sheets.
+ * The fan instead grows the page's WIDTH so it splays at the fore-edge only,
+ * which is what a real book's pages do.
+ *
+ * PILE DEPTH is the other half. Geometry comes from `max(0, d - 1)`, not from
+ * `d`, so the top TWO pages of a pile share one box at full size. The page under
+ * the turning leaf is therefore already in its final place and gets *uncovered*
+ * rather than grown, and the page opposite stays put rather than receding.
+ *
+ * The box is non-uniform — width grows while height shrinks — which is why
+ * applyScene scales page content on both axes. Both factors are exactly 1 at pile
+ * depth 0, so every page you can actually read is undistorted; the stretch only
+ * lands on fore-edge slivers nobody looks at.
  *
  * `d` in the returned slot stays the TRUE depth. z-index and bury() both read it,
  * and collapsing those as well would leave the covered top-of-pile page sorted
@@ -691,13 +702,10 @@ function depthAt(j, i) {
  */
 function slotAtDepth(flipped, d) {
   const v = Math.max(0, d - 1);
-  const w = pageW - pageW * FAN_W_RATIO * v;
-  const step = pageW * FAN_X_RATIO * v;
   return {
-    left: flipped ? pageW - step : pageW + step,
-    w,
-    // Derived from the real box, not 5/4, so pile depth 0 lands on --page-h.
-    h: w * (pageW ? pageH / pageW : 5 / 4),
+    left: pageW, // the spine — every page is bound here
+    w: pageW + pageW * FAN_OUT_RATIO * v,
+    h: pageH - pageH * FAN_SHRINK_RATIO * v,
     rot: flipped ? ROT_FLIPPED : ROT_RIGHT,
     d,
   };
@@ -764,11 +772,14 @@ function applyScene(t) {
       j === moving ? 100 : Math.round(Z_TOP - depthAt(j, i))
     );
 
-    // The fan narrows background pages; their content scales rather than
-    // reflowing. See .page-content in styles.css.
-    const scale = slot.w / pageW;
+    // The fan reshapes background pages; their content scales rather than
+    // reflowing. See .page-content in styles.css. Non-uniform because the fan
+    // grows width and reduces height independently — both are exactly 1 at pile
+    // depth 0, so no page anyone reads is ever distorted.
+    const sx = slot.w / pageW;
+    const sy = pageH ? slot.h / pageH : sx;
     el.querySelectorAll(".page-content").forEach((box) => {
-      box.style.transform = `scale(${scale})`;
+      box.style.transform = `scale(${sx}, ${sy})`;
     });
 
     // Every page is in the DOM at once, fanned behind the spread, so without
@@ -1930,8 +1941,8 @@ const TUNER_KNOBS = [
   { name: "--flip-duration", label: "flip duration", min: 80, max: 1200, step: 10, unit: "ms" },
   { name: "--book-tilt", label: "book tilt", min: 0, max: 24, step: 0.5, unit: "", show: "°" },
   { name: "--leaf-wedge", label: "leaf wedge", min: 0, max: 30, step: 0.5, unit: "", show: "°" },
-  { name: "--fan-x-ratio", label: "fan step out", min: 0, max: 0.12, step: 0.00125, unit: "" },
-  { name: "--fan-w-ratio", label: "fan narrow", min: 0, max: 0.12, step: 0.00125, unit: "" },
+  { name: "--fan-out-ratio", label: "fan splay", min: 0, max: 0.06, step: 0.00125, unit: "" },
+  { name: "--fan-shrink-ratio", label: "fan shrink", min: 0, max: 0.12, step: 0.00125, unit: "" },
   { name: "--paper-z", label: "paper z-gap", min: 0, max: 3, step: 0.1, unit: "px" },
   { name: "--perspective-ratio", label: "perspective", min: 1.5, max: 12, step: 0.1, unit: "", show: "×" },
   { name: "--edge-thickness", label: "paper edge", min: 0, max: 12, step: 0.5, unit: "px" },
@@ -1959,13 +1970,14 @@ const TUNER_EXPORT = [
   "--flip-ease",
   "--book-tilt",
   "--leaf-wedge",
-  "--fan-x-ratio",
-  "--fan-w-ratio",
+  "--fan-out-ratio",
+  "--fan-shrink-ratio",
   "--paper-z",
   "--edge-thickness",
   "--edge-color",
   "--gutter-tint",
   "--gutter-shade",
+  "--gutter-curl",
   "--gutter-bleed",
   "--perspective-ratio",
 ];
