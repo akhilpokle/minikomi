@@ -1,0 +1,331 @@
+/* ==========================================================================
+   MINIKOMI — FLIP LAB chrome                                     /flip.html
+   ==========================================================================
+   Lab-only styling. Everything about the BOOK itself comes from styles.css, on
+   purpose — .book / .leaf / .leaf-hinge / .leaf-face / .page-content / .slot are
+   the shipped rules, so what the lab shows is what the app does. Nothing in here
+   may override them; the only exceptions are the two debug modes at the bottom,
+   which are opt-in and clearly marked.
+   ========================================================================== */
+
+.lab {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  font-family: var(--mono);
+  color: var(--ink);
+}
+
+.lab-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 10px 18px;
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+
+.lab-title {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 26px;
+  font-style: italic;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.lab-sub {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-light);
+}
+
+.lab-link {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.lab-link:hover { color: var(--ink); }
+
+.lab-error {
+  margin: 0;
+  padding: 12px 18px;
+  background: #fff4f0;
+  border-bottom: 1px solid var(--orange);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--orange-dark);
+  white-space: pre-wrap;
+}
+
+.lab-body {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.lab-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 14px 18px 16px;
+  gap: 12px;
+}
+
+/* The book's box. flip.js measures this to size --page-w / --page-h, so it must
+   be the element that actually bounds the book. */
+.lab-stage {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Bright hairline on the spine. Sits above the leaves deliberately — it is a
+   ruler, not part of the scene. */
+.lab-spine {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  background: var(--orange);
+  opacity: 0.75;
+  z-index: 200;
+  pointer-events: none;
+}
+
+.lab-transport {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex: 0 0 auto;
+}
+
+.lab-scene {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.lab-scene-label {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.lab-scene-range {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  accent-color: var(--ink);
+  cursor: ew-resize;
+}
+
+.lab-scene-out {
+  min-width: 4.5em;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.lab-buttons { display: flex; gap: 6px; flex: 0 0 auto; }
+
+.lab-btn {
+  padding: 6px 10px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  color: var(--ink);
+  background: var(--white);
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.lab-btn:hover { background: var(--bg); }
+.lab-btn--wide { flex: 1; text-align: center; }
+
+.lab-probe {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--white);
+}
+
+.lab-probe b { font-weight: 600; }
+.lab-probe .ok { color: #1a7f4b; }
+.lab-probe .bad { color: var(--orange-dark); }
+.lab-probe .idle { color: var(--muted-light); }
+
+.lab-table {
+  flex: 0 0 auto;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.lab-table th,
+.lab-table td {
+  padding: 3px 6px;
+  text-align: right;
+  border-bottom: 1px solid var(--line);
+}
+
+.lab-table th {
+  font-weight: 500;
+  color: var(--muted);
+  text-align: right;
+  letter-spacing: 0.04em;
+}
+
+.lab-table th:first-child,
+.lab-table td:first-child { text-align: left; }
+.lab-table tr[data-moving="true"] td { color: var(--orange-dark); font-weight: 600; }
+
+/* ---------------------------------------------------------------- panel ---- */
+.lab-panel {
+  flex: 0 0 268px;
+  overflow-y: auto;
+  border-left: 1px solid var(--line);
+  background: var(--white);
+}
+
+.lab-panel-head {
+  padding: 8px 14px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+}
+
+.lab-panel-body { padding: 10px 14px 12px; }
+
+.lab-row { display: block; margin-bottom: 9px; }
+
+.lab-row-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 3px;
+  font-size: 11px;
+}
+
+.lab-row-head span:first-child { color: var(--muted); }
+.lab-row-value { font-variant-numeric: tabular-nums; }
+
+.lab-range {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--ink);
+  cursor: ew-resize;
+}
+
+.lab-select {
+  width: 100%;
+  padding: 4px 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink);
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+
+.lab-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 7px;
+  font-size: 11px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.lab-check input { accent-color: var(--ink); cursor: pointer; }
+
+.lab-out {
+  width: 100%;
+  padding: 7px 8px;
+  resize: vertical;
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--muted);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  white-space: pre;
+  overflow-wrap: normal;
+}
+
+.lab-foot { display: flex; gap: 6px; margin-top: 8px; }
+
+.lab :focus-visible { outline: 2px solid var(--orange); outline-offset: 1px; }
+
+/* ------------------------------------------------------- placeholder page ---
+   Stands in for a photo. Two deliberate choices:
+   - a saturated field, so adjacent pages are trivially distinguishable;
+   - a dark bar hugging the page's INNER edge, so the two bars meet flush at the
+     spine and any gutter gap shows as a break between them. This is what makes
+     a tear visible by eye instead of only in the probe readout. */
+.lab-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: hsl(var(--lab-hue) 46% 88%);
+  overflow: hidden;
+}
+
+.lab-page-num {
+  font-family: var(--mono);
+  font-size: calc(var(--tile-w) * 0.2);
+  font-weight: 600;
+  color: hsl(var(--lab-hue) 38% 34%);
+}
+
+.lab-page-tag {
+  position: absolute;
+  bottom: 6%;
+  font-size: calc(var(--tile-w) * 0.035);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: hsl(var(--lab-hue) 22% 46%);
+}
+
+.lab-page-gutter {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 7%;
+  background: hsl(var(--lab-hue) 40% 40%);
+}
+
+.page-content--right .lab-page-gutter { left: 0; }
+.page-content--left .lab-page-gutter { right: 0; }
+
+/* ------------------------------------------------------------ debug modes ---
+   Opt-in only. These DO override shipped rules, which is why they are last and
+   scoped to a class flip.js toggles. */
+.lab-outline .leaf-face { outline: 1px solid rgba(255, 0, 128, 0.8); }
+.lab-outline .leaf { outline: 1px dashed rgba(0, 90, 255, 0.55); }
+
+.lab-xray .leaf-face { opacity: 0.45; }
+.lab-xray .leaf-face { backface-visibility: visible; }

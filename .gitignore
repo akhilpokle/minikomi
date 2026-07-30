@@ -1,0 +1,12 @@
+# Machine-local Claude Code permissions. .claude/launch.json IS tracked — it is
+# shared project config (the zine-static dev server).
+.claude/settings.local.json
+
+# OS cruft
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Nothing is built or installed in-tree — the app is vanilla HTML/CSS/JS with no
+# build step — but keep these out in case a tool is ever added.
+node_modules/

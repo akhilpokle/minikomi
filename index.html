@@ -1,0 +1,152 @@
+<!--
+  ============================================================================
+  MINIKOMI — a privacy-first 8-page mini-zine maker
+  ============================================================================
+  Everything runs 100% in the browser. No photo ever leaves the device.
+  State is fully ephemeral — nothing persists across a refresh.
+
+  COMPLETE (phases 1-7): add / remove / replace, reorder, crop in Refine mode,
+  flip through the 3D booklet with the scrub bar, export the imposed A4 PDF, and
+  follow the five-step fold-and-cut guide.
+  ============================================================================
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Minikomi — privacy first zine maker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@300;400;500;600;700&family=Caveat:wght@500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<div class="bg-texture" aria-hidden="true"></div>
+
+<div class="hint" aria-hidden="true">
+  <svg class="hint-arrow" width="70" height="70" viewBox="0 0 70 70" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M55 8C52 28 40 42 20 48" stroke="#8a8f96" stroke-width="1.6" stroke-linecap="round" fill="none"/>
+    <path d="M9 39C11 43 14 47 20 48C17 44 15 40 15 35" stroke="#8a8f96" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  </svg>
+  <span class="hint-text">Drag or tap to add<br />your pics !</span>
+</div>
+
+<div class="app">
+  <header class="app-header">
+    <h1 class="title">Minikomi</h1>
+    <p class="subtitle">Privacy first zine maker.</p>
+  </header>
+
+  <div class="grid-wrap">
+    <main class="grid" id="grid"><!-- 8 slots rendered by script.js --></main>
+
+    <!--
+      Refine has two states sharing one surface: browse the booklet spread by
+      spread, then open a single page flat and large to crop it.
+    -->
+    <section class="refine" id="refine" hidden>
+      <div class="refine-browse" id="refine-browse">
+        <!--
+          The booklet as a fanned deck: 4 leaves, each with a front and a back
+          face, absolutely positioned inside one perspective container. Every
+          position is derived from a single depth number — see "Refine — the
+          book" in script.js. The paper rect masks the spine gap that opens
+          mid-flip.
+        -->
+        <div class="book" id="book">
+          <div class="book-paper" aria-hidden="true"></div>
+          <!-- leaves built by script.js -->
+        </div>
+
+        <!--
+          Scrub bar — navigation and position indicator in one control. Drag it
+          to flip spreads. Ticks and labels are rendered from SPREADS by
+          script.js, so they stay correct if the folding ever changes.
+        -->
+        <div class="scrubber" id="scrubber">
+          <div class="scrub-track" id="scrub-track" role="slider" tabindex="0"
+               aria-label="Booklet position" aria-valuemin="0" aria-valuemax="4"
+               aria-valuenow="0" aria-valuetext="Cover">
+            <div class="scrub-fill" id="scrub-fill"></div>
+            <div class="scrub-thumb" id="scrub-thumb"></div>
+          </div>
+          <div class="scrub-labels" id="scrub-labels"></div>
+        </div>
+      </div>
+
+      <div class="editor" id="editor" hidden>
+        <!-- Reuses the .slot treatment so a page looks the same everywhere. -->
+        <div class="slot editor-frame" id="editor-frame"><!-- rendered by script.js --></div>
+        <div class="editor-controls">
+          <span class="editor-hint">Drag to pan · scroll to zoom</span>
+          <input class="zoom-slider" id="zoom-slider" type="range" min="1" max="4" step="0.01" value="1" aria-label="Zoom" />
+          <button class="editor-btn" id="crop-reset" type="button" data-tip="Restore the original framing">Reset</button>
+          <button class="editor-btn editor-btn--primary" id="crop-done" type="button" data-tip="Back to the spread">Done</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <footer class="controls">
+    <div class="mode-toggle" role="group" aria-label="View mode">
+      <button class="mode-btn active" type="button" data-mode="arrange" data-tip="Arrange">
+        <img src="assets/images/container.svg" alt="Arrange" />
+      </button>
+      <button class="mode-btn" type="button" data-mode="refine" data-tip="Refine">
+        <img src="assets/images/book-open.svg" alt="Refine" />
+      </button>
+    </div>
+    <button class="print-btn" id="print-btn" type="button" disabled data-tip="How to fold it, then the PDF">PRINT IT</button>
+  </footer>
+</div>
+
+<!-- Single reused picker for every upload path (per-slot, replace, bulk). -->
+<input id="file-input" type="file" accept="image/*" multiple hidden />
+
+<!-- Non-blocking notice, e.g. when a drop exceeds the 8-page cap. -->
+<div class="notice" id="notice" role="status" aria-live="polite"></div>
+
+<!--
+  Fold-and-cut guide, opened by PRINT IT. The diagram is built by script.js from
+  the same page canvases the PDF uses, so it shows the user's actual sheet.
+-->
+<div class="modal-backdrop" id="print-modal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="fold-title">
+    <header class="modal-head">
+      <div>
+        <p class="modal-eyebrow">Your zine is ready</p>
+        <h2 class="modal-title" id="fold-title">Step 1 — Print</h2>
+      </div>
+      <button class="modal-close" id="fold-close" type="button" data-tip="Close" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M6 6l12 12M18 6L6 18" stroke="#69737B" stroke-width="1.7" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </header>
+
+    <div class="fold-stage" id="fold-stage" data-step="1"><!-- SVG by script.js --></div>
+
+    <p class="fold-text" id="fold-text" aria-live="polite"></p>
+
+    <footer class="modal-foot">
+      <div class="step-dots" id="fold-dots"><!-- by script.js --></div>
+      <div class="modal-actions">
+        <button class="editor-btn" id="fold-back" type="button">Back</button>
+        <button class="editor-btn editor-btn--primary" id="fold-next" type="button">Next</button>
+        <button class="print-btn print-btn--modal" id="fold-download" type="button" disabled
+                data-tip="Save the print-ready A4 PDF">DOWNLOAD PDF</button>
+      </div>
+    </footer>
+  </div>
+</div>
+
+<!--
+  App code only. User images are drawn to a local canvas and embedded into a
+  PDF in-page — nothing is ever uploaded.
+-->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="script.js"></script>
+</body>
+</html>

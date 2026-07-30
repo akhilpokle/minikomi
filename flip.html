@@ -1,0 +1,108 @@
+<!--
+  ============================================================================
+  MINIKOMI — FLIP LAB                                      /flip.html
+  ============================================================================
+  A standalone rig for experimenting with the booklet flip, separate from the
+  app. Not shipped, not linked from index.html — reachable only by URL.
+
+  WHY IT EXISTS
+  The app is a bad place to iterate on the flip: you have to add photos, switch
+  to Refine, and the scrub bar snaps to whole spreads, so the interesting states
+  (parked mid-turn) are hard to hold still and impossible to measure.
+
+  WHAT MAKES IT TRUSTWORTHY
+  flip.js does NOT reimplement the flip. It fetches script.js and links the real
+  clamp / bury / depthAt / slotAtDepth / applyScene straight out of it, so the
+  geometry here is the geometry that ships. If those are renamed, the lab throws
+  a loud error rather than quietly testing a stale copy.
+
+  It also shares styles.css, so every CSS-side property of the flip — the hinge
+  wedge, the transitions, the gutter, all the tokens — is the real thing too.
+  The only things the lab owns are placeholder page content and its controls.
+  ============================================================================
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Minikomi — flip lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@300;400;500;600;700&family=Caveat:wght@500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+<link rel="stylesheet" href="flip.css" />
+</head>
+<body>
+
+<div class="lab">
+  <header class="lab-head">
+    <h1 class="lab-title">flip lab</h1>
+    <span class="lab-sub">geometry linked live from script.js</span>
+    <a class="lab-link" href="index.html">← the app</a>
+  </header>
+
+  <!-- Fatal link errors land here: a renamed function in script.js, or the file
+       being opened over file:// where fetch is blocked. -->
+  <p class="lab-error" id="lab-error" hidden></p>
+
+  <div class="lab-body">
+    <div class="lab-main">
+      <div class="lab-stage" id="lab-stage">
+        <!-- Same structure the app builds: .book > .book-paper + 4 x .leaf -->
+        <div class="book" id="book">
+          <div class="book-paper" aria-hidden="true"></div>
+          <!-- leaves built by flip.js -->
+        </div>
+        <!-- Bright hairline exactly on the spine, so a tear is unmissable. -->
+        <div class="lab-spine" id="lab-spine" aria-hidden="true" hidden></div>
+      </div>
+
+      <div class="lab-transport">
+        <div class="lab-scene">
+          <label class="lab-scene-label" for="lab-scene">scene</label>
+          <input class="lab-scene-range" id="lab-scene" type="range"
+                 min="0" max="4" step="0.001" value="0" />
+          <output class="lab-scene-out" id="lab-scene-out">0.000</output>
+        </div>
+        <div class="lab-buttons">
+          <button class="lab-btn" id="lab-prev" type="button">◀ turn</button>
+          <button class="lab-btn" id="lab-play" type="button">play ▶</button>
+          <button class="lab-btn" id="lab-next" type="button">turn ▶</button>
+          <button class="lab-btn" id="lab-mid" type="button" title="Park at the midpoint of the current turn">park mid</button>
+        </div>
+      </div>
+
+      <!-- The measurement that matters: distance from the spine to the nearest
+           page edge on each side, excluding the turning leaf. -->
+      <div class="lab-probe" id="lab-probe" role="status" aria-live="off"></div>
+
+      <table class="lab-table">
+        <thead>
+          <tr><th>leaf</th><th>side</th><th>true d</th><th>pile v</th>
+              <th>left</th><th>w</th><th>rot</th><th>z</th></tr>
+        </thead>
+        <tbody id="lab-rows"></tbody>
+      </table>
+    </div>
+
+    <aside class="lab-panel">
+      <div class="lab-panel-head">tokens</div>
+      <div class="lab-panel-body" id="lab-knobs"></div>
+      <div class="lab-panel-head">view</div>
+      <div class="lab-panel-body" id="lab-view"></div>
+      <div class="lab-panel-body">
+        <textarea class="lab-out" id="lab-copy-out" rows="12" readonly spellcheck="false"
+                  aria-label="Current tokens as CSS"></textarea>
+        <div class="lab-foot">
+          <button class="lab-btn lab-btn--wide" id="lab-copy" type="button">COPY</button>
+          <button class="lab-btn lab-btn--wide" id="lab-reset" type="button">RESET</button>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script src="flip.js"></script>
+</body>
+</html>

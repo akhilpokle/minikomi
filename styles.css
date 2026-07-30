@@ -1,0 +1,1410 @@
+/* ==========================================================================
+   Minikomi — design tokens
+   ========================================================================== */
+:root {
+  --bg: #fafafa;
+  --paper: url("assets/images/paper_background.png");
+  --ink: #1c1e21;
+  --muted: #69737b;
+  --muted-light: #9aa0a6;
+  --line: rgba(0, 0, 0, 0.14);
+  --line-strong: rgba(0, 0, 0, 0.22);
+  --white: #ffffff;
+  --orange: #ff5a1f;
+  --orange-dark: #e6480f;
+  --radius: 6px;
+  --gap: 22px;
+  --tile-w: 220px;   /* Arrange tile   — set by script.js */
+  --tile-h: 275px;
+  --page-w: 300px;   /* Refine page    — set by script.js */
+  --page-h: 375px;
+  --edit-w: 420px;   /* Crop editor    — set by script.js */
+  --edit-h: 525px;
+  --mono: "Geist Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --display: "Caveat", cursive;
+
+  /* The booklet flip. Everything tunable lives here; script.js reads these
+     rather than keeping its own copies, so the two can't drift.
+     Fan offsets are ratios of --page-w, not px, so the fan keeps its
+     proportions at any page size — resizing the book needs no re-tuning. */
+  --flip-duration: 400ms;
+  --flip-ease: cubic-bezier(0.645, 0.045, 0.355, 1);
+  --book-tilt: 5;        /* deg of open-book lean; unitless so JS can read it */
+  /* Half-angle of the V each leaf is folded into, in deg. Constant, never
+     animated: it is what keeps the gutter covered while a leaf passes edge-on.
+     0 makes every leaf flat again, i.e. the pre-phase-8 build. The leaf's rest
+     angles absorb it, so the resting book looks the same at any value. */
+  --leaf-wedge: 5;
+  /* The fan, in page widths per step back. Safe to have again: geometry comes
+     from PILE depth now (see slotAtDepth), so the top page of each pile is
+     always full size and flush at the spine, and the fan only ever applies to
+     pages already hidden behind one. */
+  --fan-x-ratio: 0.04375; /* step out per pile step */
+  --fan-w-ratio: 0.03125; /* narrow per pile step */
+  /* Hairline z-separation, per TRUE depth. Load-bearing, not decoration: the top
+     two pages of a pile deliberately share one box, and coplanar quads inside a
+     preserve-3d context are sorted by real 3D position rather than z-index, so
+     without this they stitch and flicker. Doubles as paper thickness. */
+  --paper-z: 0.5px;
+  --edge-thickness: 3px;  /* paper thickness — absolute, doesn't scale */
+  --edge-color: #d8d5cc;
+  /* What shows in the empty half of a single-page spread (Cover, page 7) and in
+     the crease. Near-white, because it reads as a blank facing page — with the
+     gutter sealed by pile depth this no longer has a tear to hide, so it stopped
+     needing to be dark. */
+  --gutter-tint: #f4f2ee;
+  --gutter-shade: rgba(0, 0, 0, 0.2); /* the crease: a narrow band on the spine */
+  --gutter-bleed: 8px;    /* how far the gutter oversizes a page, vertically */
+  /* Depth of the 3D projection, as a multiple of --page-w so the look is
+     size-invariant. Lower = deeper, more dramatic foreshortening. */
+  --perspective-ratio: 3.5;
+  --perspective: 1400px;  /* computed by script.js from --perspective-ratio;
+                             this value only covers the first paint */
+}
+
+* { box-sizing: border-box; }
+
+/* The surfaces below are toggled with the `hidden` attribute, and an author
+   `display` rule would otherwise outrank the UA's [hidden] { display: none }. */
+[hidden] { display: none !important; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  font-family: var(--mono);
+  color: var(--ink);
+  height: 100%;
+  overflow: hidden;
+}
+
+.app {
+  position: relative;
+  z-index: 1;
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.bg-texture {
+  position: fixed;
+  inset: 0;
+  background-image: var(--paper);
+  background-repeat: repeat;
+  opacity: 0.4;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ==========================================================================
+   Header
+   ========================================================================== */
+.app-header {
+  flex: 0 0 auto;
+  text-align: center;
+  padding: clamp(16px, 3vh, 46px) 24px 10px;
+}
+
+.title {
+  font-family: var(--display);
+  font-weight: 600;
+  font-style: italic;
+  font-size: 44px;
+  margin: 0;
+  color: var(--ink);
+}
+
+.subtitle {
+  margin: 6px 0 0;
+  font-size: 14px;
+  color: var(--muted-light);
+  letter-spacing: 0.02em;
+}
+
+/* ==========================================================================
+   First-run hint
+   ========================================================================== */
+.hint {
+  position: fixed;
+  top: 60px;
+  right: 6%;
+  z-index: 2;
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  transform: rotate(4deg);
+  pointer-events: none;
+}
+
+.hint-arrow {
+  transform: translateY(6px);
+}
+
+.hint-text {
+  font-family: var(--display);
+  font-style: italic;
+  font-size: 20px;
+  line-height: 1.15;
+  color: var(--muted-light);
+  white-space: nowrap;
+}
+
+/* ==========================================================================
+   Grid
+   ========================================================================== */
+.grid-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 0 40px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(4, var(--tile-w));
+  grid-template-rows: repeat(2, var(--tile-h));
+  gap: var(--gap);
+}
+
+.slot {
+  position: relative;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.02);
+}
+
+.slot-label {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--muted-light);
+  text-transform: uppercase;
+  z-index: 2;
+}
+
+/* empty slot placeholder */
+.slot-empty {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.slot-empty:hover,
+.slot-empty:focus-visible {
+  background: rgba(0, 0, 0, 0.02);
+  outline: none;
+}
+
+.slot-empty:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--orange);
+}
+
+.slot-empty span {
+  font-size: 15px;
+  color: var(--muted-light);
+}
+
+/* filled slot */
+.slot-photo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* cover slot */
+.slot-cover {
+  border-color: var(--line-strong);
+}
+
+.cover-text {
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  top: 50%;
+  transform: translateY(-10%);
+  z-index: 2;
+}
+
+/* Scrim keeps cover text legible when it sits over a photo. */
+.slot-cover.slot--filled .cover-text::before {
+  content: "";
+  position: absolute;
+  inset: -14px -18px;
+  background: rgba(255, 255, 255, 0.72);
+  border-radius: 4px;
+  z-index: -1;
+}
+
+.cover-input {
+  display: block;
+  width: 100%;
+  font-family: var(--mono);
+  background: transparent;
+  border: none;
+  padding: 0;
+  outline: none;
+}
+
+.cover-input::placeholder {
+  color: var(--muted-light);
+  opacity: 1;
+}
+
+.cover-input:focus-visible {
+  box-shadow: 0 1px 0 0 var(--orange);
+}
+
+/* Scales with the tile so long titles don't overflow a shrunken cover. */
+.cover-title {
+  font-size: calc(var(--tile-w) * 0.092);
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: calc(var(--tile-w) * 0.054);
+}
+
+.cover-subtitle {
+  font-size: calc(var(--tile-w) * 0.092);
+  font-weight: 500;
+  color: var(--muted);
+}
+
+/* hover toolbar — revealed on filled slots only */
+.slot-toolbar {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  gap: 6px;
+  z-index: 3;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+.slot--filled:hover .slot-toolbar,
+.slot--filled:focus-within .slot-toolbar {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.slot-toolbar button {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--white);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.slot-toolbar button:hover {
+  border-color: var(--line-strong);
+}
+
+.slot-toolbar img,
+.slot-toolbar svg {
+  width: 15px;
+  height: 15px;
+  pointer-events: none;
+}
+
+.slot-toolbar .btn-drag {
+  cursor: grab;
+}
+
+/* ==========================================================================
+   Tooltips — required on every icon control
+   ========================================================================== */
+[data-tip] {
+  position: relative;
+}
+
+[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 7px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--ink);
+  color: var(--white);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  padding: 6px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+  z-index: 10;
+}
+
+[data-tip]:hover::after,
+[data-tip]:focus-visible::after {
+  opacity: 1;
+}
+
+/* Footer tooltips sit above the controls, clear of the viewport edge. */
+.controls [data-tip]::after {
+  bottom: calc(100% + 10px);
+}
+
+/* ==========================================================================
+   Refine — booklet spread
+   ========================================================================== */
+.refine {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* The spread sits above its scrub bar. */
+.refine-browse {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+
+/* ==========================================================================
+   Refine — the booklet as a fanned deck
+   ==========================================================================
+   An open book seen from the front. Four leaves, each with a front face (a
+   right page) and a back face (a left page), all absolutely positioned siblings
+   in one perspective container, pivoting on the spine.
+
+   script.js only ever writes rest states — left / width / height / transform /
+   z-index — and the transitions below perform the entire turn. All four
+   properties must share one duration and easing, or a page's size and its
+   rotation desynchronise mid-turn and the flip reads as broken.
+   ========================================================================== */
+.book {
+  position: relative;
+  width: calc(var(--page-w) * 2);
+  height: var(--page-h);
+  perspective: var(--perspective);
+}
+
+/* Behind every leaf. Two jobs, neither of them patching a tear any more:
+
+   1. the empty half of a single-page spread — Cover alone, page 7 alone — which
+      is why the tint is near-white and reads as a blank facing page;
+   2. the crease, a narrow shaded band on the spine.
+
+   It is no longer covering a mid-turn gap: pile depth keeps the top page of each
+   pile full size and flush at the spine, so the halves are always covered by
+   real pages. The band is deliberately tight — wide enough to read as a crease,
+   narrow enough that it never darkens page content near the gutter.
+
+   Oversized vertically by --gutter-bleed, since a page fanned back to pile depth
+   1+ scales its height down with its width. No border: a light hairline would
+   peek past a rotated page's edge. */
+.book-paper {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 100%;
+  height: calc(var(--page-h) + var(--gutter-bleed) * 2);
+  transform: translateY(-50%);
+  background-color: var(--gutter-tint);
+  background-image: linear-gradient(
+    to right,
+    rgba(0, 0, 0, 0) 44%,
+    var(--gutter-shade) 50%,
+    rgba(0, 0, 0, 0) 56%
+  );
+  border-radius: var(--radius);
+  z-index: 1;
+}
+
+.leaf {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: var(--page-w);
+  height: var(--page-h);
+  transform: translateY(-50%);
+  transform-style: preserve-3d;
+  transform-origin: left center; /* the spine */
+  transition:
+    left var(--flip-duration) var(--flip-ease),
+    width var(--flip-duration) var(--flip-ease),
+    height var(--flip-duration) var(--flip-ease),
+    transform var(--flip-duration) var(--flip-ease);
+}
+
+/* Each face hangs off its own hinge, pivoting on the same spine as the leaf, so
+   the two faces sit at a constant 2 x --leaf-wedge to each other instead of
+   back-to-back. That is the whole fix for the mid-turn gutter:
+
+   A flat leaf has one orientation, so when it passes edge-on it covers nothing,
+   and the gap its neighbours have opened at the spine shows through. Folded into
+   a V, its two faces straddle edge-on at +/- the wedge, so at the midpoint the
+   front face still projects cos(85deg) = 8.7% of a page width to the right of
+   the spine and the back face the same to the left — against a gap of 2.2% a
+   side. The gutter is covered about 4x over exactly where it used to tear.
+
+   Constant, never animated. A wedge that opened and closed would be zero at
+   both ends of the turn, and this book writes only rest states (see above) —
+   a transition from 0 to 0 does nothing. Being static also means it costs no
+   transition, cannot desynchronise from the leaf, and behaves identically on a
+   scrub and on a click. readFlipTokens() folds the wedge into the leaf's rest
+   angles, so the resting book is unchanged at any value, and 0 is exactly the
+   flat build. */
+.leaf-hinge {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  transform-origin: left center; /* the spine, same pivot as the leaf */
+}
+
+.leaf-hinge--front { transform: rotateY(calc(var(--leaf-wedge) * 1deg)); }
+.leaf-hinge--back { transform: rotateY(calc(var(--leaf-wedge) * -1deg)); }
+
+/* No overflow: hidden here. The .slot inside does the clipping the crop needs,
+   and a clipping ancestor would also cut off the page's shadow. */
+.leaf-face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+}
+
+/*
+  rotateY(0deg) is LOAD-BEARING, not dead code. Inside a preserve-3d context the
+  browser only descends hit-testing into children that carry their own
+  transform: a `transform: none` face becomes the hit target for its whole
+  subtree, so the cover's Title/Sub title inputs and the "Upload pic"
+  placeholder would silently stop responding on every front face — you'd click
+  and get no caret. The back face gets this for free from its 180deg.
+*/
+.leaf-face--front { transform: rotateY(0deg); }
+.leaf-face--back  { transform: rotateY(180deg); }
+
+/* Safety net beside `inert`, which script.js sets on everything off the current
+   spread: without this a browser lacking inert would leave buried pages
+   clickable, and a fanned-back page would open its crop editor. */
+.leaf.is-buried,
+.leaf-face.is-buried {
+  pointer-events: none;
+}
+
+/* Gives the flip physical thickness: a hairline at rest, widening into a shaded
+   strip as the page passes edge-on. Inset by the corner radius so the straight
+   strip only spans the straight part of the edge. No backface-visibility — it
+   has to stay visible from both sides through the whole turn. */
+.leaf-edge {
+  position: absolute;
+  top: var(--radius);
+  left: 100%;
+  width: var(--edge-thickness);
+  height: calc(100% - (var(--radius) * 2));
+  background: var(--edge-color);
+  transform-origin: left center;
+  transform: rotateY(90deg);
+}
+
+/* The fan makes background pages narrower. Content lives in a box fixed at one
+   page and is SCALED, never resized: .cover-title sizes off --tile-w, so
+   resizing would re-wrap the cover title on every frame of a flip. */
+.page-content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--page-w);
+  height: var(--page-h);
+  transform-origin: top left;
+  transition: transform var(--flip-duration) var(--flip-ease);
+}
+
+/* Pages reuse .slot for their treatment and only add their own size. The
+   local --tile-w override is what scales the cover title, which sizes off it. */
+.page {
+  --tile-w: var(--page-w);
+  width: var(--page-w);
+  height: var(--page-h);
+}
+
+.page--filled {
+  cursor: pointer;
+}
+
+/* Rounded and shadowed on the outer edge only, offset away from the spine. */
+.page-content--right .slot {
+  border-radius: 0 var(--radius) var(--radius) 0;
+  box-shadow: 3px 0 5px rgba(0, 0, 0, 0.07);
+}
+
+.page-content--left .slot {
+  border-radius: var(--radius) 0 0 var(--radius);
+  box-shadow: -3px 0 5px rgba(0, 0, 0, 0.07);
+}
+
+/* Land a layout with no animation — entering Refine, a rebuild, or a resize
+   shouldn't animate from wherever the book happened to be. .page-content must
+   be named explicitly; `transition: none` does not inherit. */
+.book.is-instant .leaf,
+.book.is-instant .page-content {
+  transition: none;
+}
+
+/* While the scrub bar is being dragged the page has to track the pointer
+   instead of easing behind it. */
+.book.is-scrubbing .leaf,
+.book.is-scrubbing .page-content {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .leaf,
+  .page-content {
+    transition: none;
+  }
+}
+
+/* ==========================================================================
+   Refine — scrub bar
+   ==========================================================================
+   One control for both jobs: drag it to flip spreads, read it to see where you
+   are. Orange stays reserved for PRINT IT, so the active state is ink; orange
+   appears only as the focus ring.
+
+   Everything is positioned in percentages. The bar is inside a surface that is
+   `hidden` in Arrange mode and while the crop editor is open, where measured
+   pixel widths would all come back 0 — and percentages survive a resize with
+   no JS besides.
+   ========================================================================== */
+.scrubber {
+  /* Span exactly the resting spread, so the bar reads as part of the booklet. */
+  width: calc(var(--page-w) * 2);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.scrub-track {
+  position: relative;
+  height: 20px; /* generous hit area around a 3px rail */
+  cursor: pointer;
+  touch-action: none; /* stop the browser claiming the drag as a scroll */
+}
+
+/* The rail itself — drawn, rather than sized, so the hit area stays tall. */
+.scrub-track::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 3px;
+  margin-top: -1.5px;
+  background: var(--line);
+  border-radius: 2px;
+}
+
+.scrub-track:focus-visible {
+  outline: none;
+}
+
+.scrub-track:focus-visible::before {
+  box-shadow: 0 0 0 2px var(--orange);
+}
+
+/* Progress through the booklet — width set by script.js. */
+.scrub-fill {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  height: 3px;
+  margin-top: -1.5px;
+  background: var(--line-strong);
+  border-radius: 2px;
+}
+
+.scrub-tick {
+  position: absolute;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px 0 0 -3.5px;
+  border-radius: 50%;
+  background: var(--muted-light);
+}
+
+.scrub-thumb {
+  position: absolute;
+  top: 50%;
+  width: 15px;
+  height: 15px;
+  margin-top: -7.5px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: var(--ink);
+  /* Ticks come after the thumb in DOM order and would otherwise paint the
+     active stop's grey dot on top of it. */
+  z-index: 2;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+  transition: transform 0.12s ease;
+}
+
+.scrub-track.is-scrubbing {
+  cursor: grabbing;
+}
+
+.scrub-track.is-scrubbing .scrub-thumb {
+  transform: translateX(-50%) scale(1.15);
+}
+
+/* Labels double as jump targets. Same treatment as .slot-label. */
+.scrub-labels {
+  position: relative;
+  height: 14px;
+}
+
+.scrub-label {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--muted-light);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.scrub-label:hover {
+  color: var(--muted);
+}
+
+.scrub-label.is-active {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.scrub-label:focus-visible {
+  outline: none;
+  color: var(--ink);
+  box-shadow: 0 2px 0 0 var(--orange);
+}
+
+/* ==========================================================================
+   Refine — crop editor
+   ========================================================================== */
+.editor {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.editor-frame {
+  --tile-w: var(--edit-w);
+  width: var(--edit-w);
+  height: var(--edit-h);
+  cursor: grab;
+  /* Stops the browser claiming the drag as a scroll/pinch gesture. */
+  touch-action: none;
+}
+
+.editor-frame.is-panning {
+  cursor: grabbing;
+}
+
+/* A photo that exactly fills the frame at zoom 1 has nowhere to pan. */
+.editor-frame.is-locked {
+  cursor: default;
+}
+
+.editor-controls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.editor-hint {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--muted-light);
+}
+
+.zoom-slider {
+  width: 150px;
+  accent-color: var(--orange);
+  cursor: pointer;
+}
+
+.editor-btn {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  color: var(--ink);
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 16px;
+  height: 34px;
+  cursor: pointer;
+}
+
+.editor-btn:hover {
+  border-color: var(--line-strong);
+}
+
+.editor-btn--primary {
+  color: var(--white);
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+.editor-btn--primary:hover {
+  border-color: var(--ink);
+}
+
+/* ==========================================================================
+   Bottom controls
+   ========================================================================== */
+.controls {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  padding: clamp(16px, 3vh, 44px) 0 clamp(16px, 3vh, 44px);
+}
+
+.mode-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.mode-btn {
+  width: 40px;
+  height: 40px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.mode-btn img {
+  width: 20px;
+  height: 20px;
+}
+
+.mode-btn.active {
+  background: var(--white);
+  border-color: var(--line);
+}
+
+.mode-btn.active img {
+  filter: invert(46%) sepia(89%) saturate(2758%) hue-rotate(1deg) brightness(103%) contrast(105%);
+}
+
+.print-btn {
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 0.03em;
+  color: var(--white);
+  background: var(--orange);
+  border: none;
+  border-radius: 999px;
+  padding: 0 30px;
+  height: 52px;
+  cursor: pointer;
+}
+
+.print-btn:hover:not(:disabled) {
+  background: var(--orange-dark);
+}
+
+.print-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Disabled buttons don't fire hover events reliably — suppress the tooltip. */
+.print-btn:disabled::after {
+  display: none;
+}
+
+/* ==========================================================================
+   Reorder
+   ========================================================================== */
+.slot[draggable="true"] {
+  cursor: grab;
+}
+
+.slot.is-dragging {
+  opacity: 0.35;
+  cursor: grabbing;
+}
+
+/* Keep the grab cursor while the pointer is over any tile mid-drag. */
+.is-reordering .slot,
+.is-reordering .slot-empty {
+  cursor: grabbing;
+}
+
+/* Images drag themselves natively, stealing the tile's drag. */
+.slot-photo,
+.slot-toolbar img {
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+/* ==========================================================================
+   Drag-and-drop affordance
+   ========================================================================== */
+.is-dragover .slot:not(.slot--filled) {
+  border-color: var(--orange);
+  border-style: dashed;
+  background: rgba(255, 90, 31, 0.04);
+}
+
+.is-dragover .slot-empty span {
+  color: var(--orange);
+}
+
+/* ==========================================================================
+   First-run hint (hidden once the zine has a photo)
+   ========================================================================== */
+.hint.is-hidden {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+/* ==========================================================================
+   Print — fold-and-cut modal
+   ========================================================================== */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: rgba(28, 30, 33, 0.42);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.modal {
+  width: min(640px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  background: var(--white);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  padding: 22px 24px 20px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.18);
+}
+
+.modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.modal-eyebrow {
+  margin: 0 0 4px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-light);
+}
+
+.modal-title {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--ink);
+}
+
+.modal-close {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--white);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.modal-close:hover {
+  border-color: var(--line-strong);
+}
+
+.modal-close svg {
+  width: 15px;
+  height: 15px;
+  pointer-events: none;
+}
+
+/* Tooltip would otherwise be clipped by the dialog's top edge. */
+.modal-close[data-tip]::after {
+  bottom: auto;
+  top: calc(100% + 7px);
+}
+
+.fold-text {
+  margin: 0;
+  min-height: 3.2em; /* reserve the tallest step, so the footer never jumps */
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.modal-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Same pill as the main action, sized to sit in a dialog footer. The min-width
+   fits "PREPARING…" too, so it doesn't jump when the pages finish rendering. */
+.print-btn--modal {
+  height: 40px;
+  min-width: 154px;
+  padding: 0 20px;
+  font-size: 12px;
+}
+
+.fold-stage-wait {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--muted-light);
+}
+
+.step-dots {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.step-dot {
+  width: 9px;
+  height: 9px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--line-strong);
+  background: var(--white);
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.step-dot:hover {
+  background: var(--muted-light);
+}
+
+.step-dot.is-active {
+  background: var(--ink);
+  border-color: var(--ink);
+  transform: scale(1.2);
+}
+
+.step-dot:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--orange);
+}
+
+/* ==========================================================================
+   Print — the fold diagram
+   ==========================================================================
+   One SVG holding every step's layer; stepping is pure CSS off `data-step`, so
+   the eight thumbnails are encoded once and transitions come free.
+   ========================================================================== */
+.fold-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 297 / 210; /* the sheet, so nothing ever distorts */
+  background: rgba(0, 0, 0, 0.015);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.fold-stage svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.fold-stage .fs-paper {
+  fill: var(--white);
+  stroke: var(--line-strong);
+  stroke-width: 0.5;
+}
+
+.fold-stage .fs-creases line {
+  stroke: var(--muted-light);
+  stroke-width: 0.4;
+  stroke-dasharray: 2 2;
+}
+
+/* Sits under every mark so arrows and cut lines stay readable over a photo. */
+.fold-stage .fs-halo {
+  fill: none;
+  stroke: var(--white);
+  stroke-width: 2.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.9;
+}
+
+.fold-stage .fs-glyph-halo {
+  fill: var(--white);
+  stroke: none;
+  opacity: 0.9;
+}
+
+.fold-stage .fs-arrow {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 0.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.fold-stage .fs-cutline {
+  stroke: var(--ink);
+  stroke-width: 0.8;
+  stroke-dasharray: 4 3;
+}
+
+.fold-stage .fs-scissors circle {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 0.8;
+}
+
+.fold-stage .fs-scissors path {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 0.8;
+  stroke-linecap: round;
+}
+
+.fold-stage .fs-paper-edge {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 0.5;
+}
+
+/* The cut, now an opening along the strip's folded edge. Ink, not orange —
+   §10 keeps the accent for the primary action, which here is DOWNLOAD PDF. */
+.fold-stage .fs-slit {
+  stroke: var(--ink);
+  stroke-width: 1.2;
+  stroke-linecap: round;
+  stroke-dasharray: 3 2.5;
+}
+
+.fold-stage .fs-leaf {
+  fill: var(--white);
+  stroke: var(--line);
+  stroke-width: 0.4;
+}
+
+.fold-stage .fs-leaf-outline {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 0.5;
+}
+
+/* Layers cross-fade; only the flat sheet persists across steps 1-3. */
+.fold-stage .fs-folds,
+.fold-stage .fs-cut,
+.fold-stage .fs-strip,
+.fold-stage .fs-booklet {
+  opacity: 0;
+  transition: opacity 0.28s ease;
+}
+
+.fold-stage .fs-sheet {
+  opacity: 1;
+  transition: opacity 0.28s ease;
+}
+
+.fold-stage[data-step="2"] .fs-folds,
+.fold-stage[data-step="3"] .fs-cut,
+.fold-stage[data-step="4"] .fs-strip,
+.fold-stage[data-step="5"] .fs-booklet {
+  opacity: 1;
+}
+
+.fold-stage[data-step="4"] .fs-sheet,
+.fold-stage[data-step="5"] .fs-sheet {
+  opacity: 0;
+}
+
+/* Draws the cut on rather than snapping it in. */
+.fold-stage .fs-cutline {
+  stroke-dashoffset: 60;
+  transition: stroke-dashoffset 0.5s ease 0.1s;
+}
+
+.fold-stage[data-step="3"] .fs-cutline {
+  stroke-dashoffset: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fold-stage * {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ==========================================================================
+   Inline notice
+   ========================================================================== */
+.notice {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translate(-50%, 8px);
+  background: var(--ink);
+  color: var(--white);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  padding: 10px 14px;
+  border-radius: 6px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  z-index: 20;
+}
+
+.notice.is-visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+/* ==========================================================================
+   Dev — flip tuner
+   ==========================================================================
+   Scaffolding, not product: script.js only builds this when the URL carries
+   #tune. Delete this block and the matching section in script.js to remove it.
+
+   Sits above the app chrome (which tops out at z-index 10) and the toast (20),
+   but below the print modal's backdrop (30) — so the fold guide still covers
+   it, and the panel can't be fiddled with behind a dialog.
+
+   Deliberately plain: no orange (reserved for PRINT IT, §10) and no paper
+   texture, so it never reads as part of the zine.
+   ========================================================================== */
+.tuner {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 25;
+  width: 244px;
+  background: var(--white);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink);
+}
+
+.tuner-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 8px 8px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.tuner-title {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.tuner-collapse {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.tuner-collapse:hover {
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+.tuner-body {
+  padding: 10px 12px 12px;
+}
+
+.tuner-note {
+  margin: 0 0 10px;
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--muted-light);
+}
+
+.tuner-row {
+  display: block;
+  margin-bottom: 9px;
+}
+
+.tuner-row-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+
+.tuner-label {
+  color: var(--muted);
+}
+
+/* Tabular figures, or the readout jiggles the row as digits change width. */
+.tuner-value {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.tuner-range {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--ink);
+  cursor: ew-resize;
+}
+
+.tuner-select,
+.tuner-color {
+  width: 100%;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink);
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+
+.tuner-select {
+  padding: 4px 6px;
+}
+
+.tuner-color {
+  height: 24px;
+  padding: 2px;
+  cursor: pointer;
+}
+
+/* The values as pasteable CSS. Always visible, so they can be selected by hand
+   if the clipboard API is unavailable. */
+.tuner-out {
+  width: 100%;
+  margin-top: 4px;
+  padding: 7px 8px;
+  resize: vertical;
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--muted);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  white-space: pre;
+  overflow-wrap: normal;
+}
+
+.tuner-foot {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.tuner-btn {
+  flex: 1;
+  padding: 6px 0;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+  background: var(--white);
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.tuner-btn:hover {
+  background: var(--bg);
+}
+
+.tuner :focus-visible {
+  outline: 2px solid var(--orange);
+  outline-offset: 1px;
+}
