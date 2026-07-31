@@ -2161,7 +2161,6 @@ function notify(message) {
 
 function syncChrome() {
   const count = photoCount();
-  printBtn.disabled = count === 0;
   // The hint points at the empty Arrange grid, so it has no business in Refine.
   hintEl.classList.toggle("is-hidden", count > 0 || state.mode !== "arrange");
 }
