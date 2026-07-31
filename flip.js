@@ -44,13 +44,14 @@ const EXPORT_ORDER = [
   "--flip-ease",
   "--book-tilt",
   "--leaf-wedge",
-  "--fan-x-ratio",
-  "--fan-w-ratio",
+  "--fan-out-ratio",
+  "--fan-shrink-ratio",
   "--paper-z",
   "--edge-thickness",
   "--edge-color",
   "--gutter-tint",
   "--gutter-shade",
+  "--gutter-curl",
   "--gutter-bleed",
   "--perspective-ratio",
 ];
@@ -59,8 +60,8 @@ const KNOBS = [
   { name: "--flip-duration", label: "flip duration", min: 80, max: 1200, step: 10, unit: "ms" },
   { name: "--book-tilt", label: "book tilt", min: 0, max: 24, step: 0.5, unit: "", show: "°" },
   { name: "--leaf-wedge", label: "leaf wedge", min: 0, max: 30, step: 0.5, unit: "", show: "°" },
-  { name: "--fan-x-ratio", label: "fan step out", min: 0, max: 0.12, step: 0.00125, unit: "" },
-  { name: "--fan-w-ratio", label: "fan narrow", min: 0, max: 0.12, step: 0.00125, unit: "" },
+  { name: "--fan-out-ratio", label: "fan splay", min: 0, max: 0.06, step: 0.00125, unit: "" },
+  { name: "--fan-shrink-ratio", label: "fan shrink", min: 0, max: 0.12, step: 0.00125, unit: "" },
   { name: "--paper-z", label: "paper z-gap", min: 0, max: 3, step: 0.1, unit: "px" },
   { name: "--perspective-ratio", label: "perspective", min: 1.5, max: 12, step: 0.1, unit: "", show: "×" },
   { name: "--edge-thickness", label: "paper edge", min: 0, max: 12, step: 0.5, unit: "px" },
@@ -148,7 +149,7 @@ function linkGeometry(src, env) {
      const { leafEls, LEAF_COUNT, MAX_DEPTH, rootStyle, reducedMotion } = env;
      const Z_TOP = 30;
      let pageW = 0, pageH = 0;
-     let FAN_X_RATIO, FAN_W_RATIO, BOOK_TILT, LEAF_WEDGE, PERSPECTIVE_RATIO,
+     let FAN_OUT_RATIO, FAN_SHRINK_RATIO, BOOK_TILT, LEAF_WEDGE, PERSPECTIVE_RATIO,
          PAPER_Z, BOOK_SPAN, ROT_RIGHT, ROT_FLIPPED, FLIP_MS;
 
      ${bodies}
@@ -157,7 +158,7 @@ function linkGeometry(src, env) {
        clamp, token, bury, readFlipTokens, depthAt, slotAtDepth, applyScene,
        setPageBox(w, h) { pageW = w; pageH = h; },
        values: () => ({
-         FAN_X_RATIO, FAN_W_RATIO, BOOK_TILT, LEAF_WEDGE, PERSPECTIVE_RATIO,
+         FAN_OUT_RATIO, FAN_SHRINK_RATIO, BOOK_TILT, LEAF_WEDGE, PERSPECTIVE_RATIO,
          PAPER_Z, BOOK_SPAN, ROT_RIGHT, ROT_FLIPPED, FLIP_MS, pageW, pageH,
        }),
      };`

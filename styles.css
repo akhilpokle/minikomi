@@ -30,17 +30,35 @@
   --flip-duration: 400ms;
   --flip-ease: cubic-bezier(0.645, 0.045, 0.355, 1);
   --book-tilt: 5;        /* deg of open-book lean; unitless so JS can read it */
-  /* Half-angle of the V each leaf is folded into, in deg. Constant, never
-     animated: it is what keeps the gutter covered while a leaf passes edge-on.
-     0 makes every leaf flat again, i.e. the pre-phase-8 build. The leaf's rest
-     angles absorb it, so the resting book looks the same at any value. */
-  --leaf-wedge: 5;
-  /* The fan, in page widths per step back. Safe to have again: geometry comes
-     from PILE depth now (see slotAtDepth), so the top page of each pile is
-     always full size and flush at the spine, and the fan only ever applies to
-     pages already hidden behind one. */
-  --fan-x-ratio: 0.04375; /* step out per pile step */
-  --fan-w-ratio: 0.03125; /* narrow per pile step */
+  /* Half-angle of the V each leaf is folded into, in deg.
+
+     0, AND IT SHOULD STAY 0 unless you have a reason. A leaf's two faces are the
+     two sides of ONE sheet — pages 2 and 3 of the zine, back to back. Any wedge
+     splays them apart, and near edge-on the sheet renders as two separate
+     ribbons with a gap down the middle instead of one page turning. At 0 they are
+     coplanar and backface-visibility shows exactly one, which is what makes the
+     flip read as solid paper.
+
+     It was added to cover the mid-turn gutter, which binding every page at the
+     spine now does properly (see slotAtDepth) — so it buys nothing and costs the
+     split. Kept as a knob only because it is the hook a future curved-page
+     treatment would hang off. The rest angles absorb it, so the resting book
+     looks identical at any value. */
+  --leaf-wedge: 0;
+  /* The fan. Every page is BOUND AT THE SPINE: a receding page keeps its inner
+     edge exactly on the spine and splays at the fore-edge only, the way a real
+     book's pages do. That is why the fan grows the page's WIDTH instead of
+     translating the whole box — translating detached the fanned pages from the
+     spine, and the book read as a pile of loose sheets rather than a bound one.
+
+     Non-uniform, deliberately. Only pages at pile depth 0 are ever read, and
+     those are always exactly one page, undistorted. Depth 1+ shows nothing but a
+     sliver of fore-edge, where a little stretch is invisible. */
+  --fan-out-ratio: 0.0125;     /* fore-edge extends, per pile step */
+  --fan-shrink-ratio: 0.03125; /* height reduces, per pile step */
+  /* Width of the gutter shade drawn onto the spine edge of a spread page, as a
+     fraction of page width. Replaces the border there — see .page-content. */
+  --gutter-curl: 0.045;
   /* Hairline z-separation, per TRUE depth. Load-bearing, not decoration: the top
      two pages of a pile deliberately share one box, and coplanar quads inside a
      preserve-3d context are sorted by real 3D position rather than z-index, so
@@ -54,7 +72,12 @@
      needing to be dark. */
   --gutter-tint: #f4f2ee;
   --gutter-shade: rgba(0, 0, 0, 0.2); /* the crease: a narrow band on the spine */
-  --gutter-bleed: 8px;    /* how far the gutter oversizes a page, vertically */
+  /* 0 now. This oversized .book-paper to hide the height shortfall of a page
+     fanned back mid-turn — but pile depth keeps both spread pages at full height
+     always, so the only thing it did was ring the book with a pale halo. Kept as
+     a knob rather than deleted, since it is the escape hatch if any future change
+     lets a page fall short of its box again. */
+  --gutter-bleed: 0px;
   /* Depth of the 3D projection, as a multiple of --page-w so the look is
      size-invariant. Lower = deeper, more dramatic foreshortening. */
   --perspective-ratio: 3.5;
@@ -474,23 +497,17 @@ html, body {
 }
 
 /* Each face hangs off its own hinge, pivoting on the same spine as the leaf, so
-   the two faces sit at a constant 2 x --leaf-wedge to each other instead of
-   back-to-back. That is the whole fix for the mid-turn gutter:
+   the two faces CAN be splayed apart by --leaf-wedge. At the default of 0 they
+   are not, and they should not be: a leaf's faces are the two sides of one sheet,
+   and splaying them makes a turning page render as two ribbons with a gap down
+   the middle rather than as one page. See --leaf-wedge for the full reasoning.
 
-   A flat leaf has one orientation, so when it passes edge-on it covers nothing,
-   and the gap its neighbours have opened at the spine shows through. Folded into
-   a V, its two faces straddle edge-on at +/- the wedge, so at the midpoint the
-   front face still projects cos(85deg) = 8.7% of a page width to the right of
-   the spine and the back face the same to the left — against a gap of 2.2% a
-   side. The gutter is covered about 4x over exactly where it used to tear.
-
-   Constant, never animated. A wedge that opened and closed would be zero at
-   both ends of the turn, and this book writes only rest states (see above) —
-   a transition from 0 to 0 does nothing. Being static also means it costs no
-   transition, cannot desynchronise from the leaf, and behaves identically on a
-   scrub and on a click. readFlipTokens() folds the wedge into the leaf's rest
-   angles, so the resting book is unchanged at any value, and 0 is exactly the
-   flat build. */
+   This structure exists at all because a wedge was once how the mid-turn gutter
+   got covered. Binding every page at the spine does that properly now, so the
+   hinges are inert wrappers at the default — kept because they are where a curved
+   page treatment would attach, and because zeroing a token is a safer default
+   than deleting the mechanism. readFlipTokens() folds the wedge into the leaf's
+   rest angles, so the resting book is identical at any value. */
 .leaf-hinge {
   position: absolute;
   inset: 0;
@@ -568,15 +585,37 @@ html, body {
   cursor: pointer;
 }
 
-/* Rounded and shadowed on the outer edge only, offset away from the spine. */
+/* Rounded and shadowed on the OUTER edge only, offset away from the spine.
+
+   The spine edge carries no border at all. .slot borders all four sides, so two
+   abutting pages put 2px of --line down the gutter, and the spread read as two
+   loose sheets butted together instead of one bound spread. Removing it is what
+   joins them: with box-sizing: border-box the page's footprint is unchanged and
+   its content simply gains that 1px.
+
+   The gutter is drawn instead as an inset shade on the page itself, which reads
+   as the crease AND as the paper starting to curve into it. Drawn on the page
+   rather than on .book-paper behind, so it cannot be revealed or hidden by
+   whatever the leaves happen to be doing. Every page gets this, not just the
+   spread — they are all bound at the same spine. */
 .page-content--right .slot {
   border-radius: 0 var(--radius) var(--radius) 0;
-  box-shadow: 3px 0 5px rgba(0, 0, 0, 0.07);
+  border-left-width: 0;
+  box-shadow:
+    3px 0 5px rgba(0, 0, 0, 0.07),
+    inset calc(var(--page-w) * var(--gutter-curl)) 0
+      calc(var(--page-w) * var(--gutter-curl)) calc(var(--page-w) * -0.028)
+      var(--gutter-shade);
 }
 
 .page-content--left .slot {
   border-radius: var(--radius) 0 0 var(--radius);
-  box-shadow: -3px 0 5px rgba(0, 0, 0, 0.07);
+  border-right-width: 0;
+  box-shadow:
+    -3px 0 5px rgba(0, 0, 0, 0.07),
+    inset calc(var(--page-w) * var(--gutter-curl) * -1) 0
+      calc(var(--page-w) * var(--gutter-curl)) calc(var(--page-w) * -0.028)
+      var(--gutter-shade);
 }
 
 /* Land a layout with no animation — entering Refine, a rebuild, or a resize
