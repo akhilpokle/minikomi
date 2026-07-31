@@ -90,13 +90,21 @@
   </div>
 
   <footer class="controls">
-    <div class="mode-toggle" role="group" aria-label="View mode">
-      <button class="mode-btn active" type="button" data-mode="arrange" data-tip="Arrange">
-        <img src="assets/images/container.svg" alt="Arrange" />
-      </button>
-      <button class="mode-btn" type="button" data-mode="refine" data-tip="Refine">
-        <img src="assets/images/book-open.svg" alt="Refine" />
-      </button>
+    <div class="mode-toggle" role="group" aria-label="View mode" data-mode="arrange">
+      <div class="mode-toggle-track">
+        <button class="mode-btn active" type="button" data-mode="arrange" data-tip="Arrange">
+          <img src="assets/images/container.svg" alt="Arrange" />
+        </button>
+        <button class="mode-btn" type="button" data-mode="refine" data-tip="Refine">
+          <img src="assets/images/book-open.svg" alt="Refine" />
+        </button>
+        <div class="mode-toggle-thumb" aria-hidden="true">
+          <div class="mode-toggle-ink">
+            <span class="mode-toggle-ink-icon mode-toggle-ink-icon--arrange"></span>
+            <span class="mode-toggle-ink-icon mode-toggle-ink-icon--refine"></span>
+          </div>
+        </div>
+      </div>
     </div>
     <button class="print-btn" id="print-btn" type="button" disabled data-tip="How to fold it, then the PDF">PRINT IT</button>
   </footer>

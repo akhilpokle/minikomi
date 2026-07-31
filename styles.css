@@ -825,22 +825,32 @@ body.is-morphing .refine {
   padding: clamp(16px, 3vh, 44px) 0 clamp(16px, 3vh, 44px);
 }
 
+/* Level 1: shell. */
 .mode-toggle {
   display: flex;
-  align-items: center;
-  gap: 4px;
   background: var(--white);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 6px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  border-radius: 16px;
+  padding: 8px;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.25);
+}
+
+/* Level 2: track — one continuous strip both cells sit in, so the level-3
+   thumb below has a shared coordinate space to slide across. */
+.mode-toggle-track {
+  position: relative;
+  display: flex;
+  background: #f2f2f2;
+  border-radius: 8px;
+  box-shadow: inset 0 0 3px rgba(0, 0, 0, 0.2);
+  padding: 4px;
 }
 
 .mode-btn {
+  position: relative;
   width: 40px;
   height: 40px;
-  border: 1px solid transparent;
-  border-radius: 10px;
+  border: none;
+  border-radius: 6px;
   background: transparent;
   display: flex;
   align-items: center;
@@ -853,13 +863,77 @@ body.is-morphing .refine {
   height: 20px;
 }
 
-.mode-btn.active {
+/* Level 3: thumb — an opaque white pill that slides over the track and masks
+   whichever cell it's covering. It never resizes or fades; it only ever
+   translates, which is what makes the motion read as one pill masking past
+   both icons rather than two icons cross-fading. */
+.mode-toggle-thumb {
+  position: absolute;
+  inset: 4px auto auto 4px;
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
   background: var(--white);
-  border-color: var(--line);
+  box-shadow: 0 0 3px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  pointer-events: none;
+  transition: transform var(--morph-duration) var(--morph-ease);
 }
 
-.mode-btn.active img {
-  filter: invert(46%) sepia(89%) saturate(2758%) hue-rotate(1deg) brightness(103%) contrast(105%);
+/* The source icons are baked grey (#69737B); the thumb carries its own
+   orange copies (ink) rather than recoloring the real icons underneath, so
+   revealing/hiding them is just the thumb's clip window sliding — the ink
+   itself counter-translates to stay put on screen. */
+.mode-toggle-ink {
+  display: flex;
+  width: 200%;
+  height: 100%;
+  transition: transform var(--morph-duration) var(--morph-ease);
+}
+
+.mode-toggle-ink-icon {
+  flex: 0 0 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mode-toggle-ink-icon::before {
+  content: "";
+  width: 20px;
+  height: 20px;
+  background-color: #ff3d00;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
+}
+
+.mode-toggle-ink-icon--arrange::before {
+  mask-image: url("assets/images/container.svg");
+  -webkit-mask-image: url("assets/images/container.svg");
+}
+
+.mode-toggle-ink-icon--refine::before {
+  mask-image: url("assets/images/book-open.svg");
+  -webkit-mask-image: url("assets/images/book-open.svg");
+}
+
+.mode-toggle[data-mode="refine"] .mode-toggle-thumb {
+  transform: translateX(100%);
+}
+
+.mode-toggle[data-mode="refine"] .mode-toggle-ink {
+  transform: translateX(-50%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mode-toggle-thumb,
+  .mode-toggle-ink {
+    transition: none;
+  }
 }
 
 .print-btn {

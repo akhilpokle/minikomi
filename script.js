@@ -26,6 +26,7 @@ const printBtn = document.getElementById("print-btn");
 const noticeEl = document.getElementById("notice");
 const hintEl = document.querySelector(".hint");
 
+const modeToggle = document.querySelector(".mode-toggle");
 const modeBtns = Array.from(document.querySelectorAll(".mode-btn"));
 const refineEl = document.getElementById("refine");
 const browseEl = document.getElementById("refine-browse");
@@ -661,6 +662,7 @@ function setMode(mode) {
   modeBtns.forEach((btn) =>
     btn.classList.toggle("active", btn.dataset.mode === mode)
   );
+  modeToggle.dataset.mode = mode;
 
   if (reducedMotion || wasEditing) {
     grid.hidden = mode !== "arrange";
