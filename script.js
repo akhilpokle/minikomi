@@ -487,15 +487,6 @@ function buildPhotoImg(page) {
   return img;
 }
 
-// Labels are derived from position, so phase 3 reordering keeps them correct
-// with no extra bookkeeping.
-function buildLabel(index) {
-  const label = document.createElement("span");
-  label.className = "slot-label";
-  label.textContent = index === 0 ? "Cover" : String(index);
-  return label;
-}
-
 function buildEmptyPlaceholder(index) {
   const empty = document.createElement("div");
   empty.className = "slot-empty";
@@ -505,7 +496,6 @@ function buildEmptyPlaceholder(index) {
     "aria-label",
     index === 0 ? "Upload cover photo" : `Upload photo for page ${index}`
   );
-  empty.innerHTML = `<span>Upload pic</span>`;
   empty.addEventListener("click", () => openPicker(index, "fill"));
   empty.addEventListener("keydown", (e) => {
     if (e.key === "Enter" || e.key === " ") {
@@ -525,7 +515,6 @@ function renderSlot(page, index) {
   el.dataset.id = page.id;
 
   if (page.photo) el.appendChild(buildPhotoImg(page));
-  el.appendChild(buildLabel(index));
   if (page.isCover) el.appendChild(buildCoverText(page));
 
   if (!page.photo) {
@@ -589,13 +578,11 @@ function attachReorder(el, page) {
   });
 }
 
-// Labels and indices are positional, so they have to follow the live DOM
-// moves — otherwise a mid-drag file drop would target the wrong page.
+// Indices are positional, so they have to follow the live DOM moves —
+// otherwise a mid-drag file drop would target the wrong page.
 function refreshPositions() {
   Array.from(grid.children).forEach((el, i) => {
     el.dataset.index = String(i);
-    const label = el.querySelector(".slot-label");
-    if (label) label.textContent = i === 0 ? "Cover" : String(i);
   });
 }
 
@@ -707,7 +694,6 @@ function buildPage(index) {
   el.dataset.id = page.id;
 
   if (page.photo) el.appendChild(buildPhotoImg(page));
-  el.appendChild(buildLabel(index));
   if (page.isCover) el.appendChild(buildCoverText(page));
 
   if (!page.photo) {
@@ -1288,7 +1274,8 @@ function spreadFraction(index) {
   return LAST_SPREAD === 0 ? 0 : index / LAST_SPREAD;
 }
 
-// "Cover", "1–2", "7" — the same positional naming as buildLabel().
+// "Cover", "1–2", "7" — positional naming, derived the same way the cards'
+// labels were before they came off.
 function spreadLabel(index) {
   return SPREADS[index].map((i) => (i === 0 ? "Cover" : String(i))).join("–");
 }
@@ -1468,7 +1455,6 @@ function renderEditor(index) {
   editorFrame.dataset.id = page.id;
 
   if (page.photo) editorFrame.appendChild(buildPhotoImg(page));
-  editorFrame.appendChild(buildLabel(index));
   // Shown while cropping so the photo can be framed around the title.
   if (page.isCover) editorFrame.appendChild(buildCoverText(page));
 

@@ -217,33 +217,22 @@ html, body {
   gap: var(--gap);
 }
 
+/* Square-cornered, like cut paper. --radius is deliberately not used here: it
+   still rounds the tooltip and the fold-guide sheet, which are chrome. */
 .slot {
   position: relative;
   background: var(--white);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
   overflow: hidden;
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.02);
 }
 
-.slot-label {
-  position: absolute;
-  top: 10px;
-  left: 12px;
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  color: var(--muted-light);
-  text-transform: uppercase;
-  z-index: 2;
-}
-
-/* empty slot placeholder */
+/* Empty slot placeholder — the whole card as one hit target. Carries no text;
+   the dashed border and the hover tint are the entire affordance. Still
+   focusable and labelled for screen readers, see buildEmptyPlaceholder(). */
 .slot-empty {
   height: 100%;
   width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   cursor: pointer;
   transition: background 0.15s ease;
 }
@@ -256,11 +245,6 @@ html, body {
 
 .slot-empty:focus-visible {
   box-shadow: inset 0 0 0 2px var(--orange);
-}
-
-.slot-empty span {
-  font-size: 15px;
-  color: var(--muted-light);
 }
 
 /* filled slot */
@@ -483,7 +467,6 @@ html, body {
     var(--gutter-shade) 50%,
     rgba(0, 0, 0, 0) 56%
   );
-  border-radius: var(--radius);
   z-index: 1;
 }
 
@@ -537,9 +520,9 @@ html, body {
   rotateY(0deg) is LOAD-BEARING, not dead code. Inside a preserve-3d context the
   browser only descends hit-testing into children that carry their own
   transform: a `transform: none` face becomes the hit target for its whole
-  subtree, so the cover's Title/Sub title inputs and the "Upload pic"
-  placeholder would silently stop responding on every front face — you'd click
-  and get no caret. The back face gets this for free from its 180deg.
+  subtree, so the cover's Title/Sub title inputs and the empty-slot upload
+  target would silently stop responding on every front face — you'd click and
+  get no caret. The back face gets this for free from its 180deg.
 */
 .leaf-face--front { transform: rotateY(0deg); }
 .leaf-face--back  { transform: rotateY(180deg); }
@@ -553,15 +536,17 @@ html, body {
 }
 
 /* Gives the flip physical thickness: a hairline at rest, widening into a shaded
-   strip as the page passes edge-on. Inset by the corner radius so the straight
-   strip only spans the straight part of the edge. No backface-visibility — it
-   has to stay visible from both sides through the whole turn. */
+   strip as the page passes edge-on. Spans the full height — it used to be inset
+   by the corner radius so the straight strip only covered the straight part of
+   the edge, but pages are square-cornered now and the whole edge is straight.
+   No backface-visibility — it has to stay visible from both sides through the
+   whole turn. */
 .leaf-edge {
   position: absolute;
-  top: var(--radius);
+  top: 0;
   left: 100%;
   width: var(--edge-thickness);
-  height: calc(100% - (var(--radius) * 2));
+  height: 100%;
   background: var(--edge-color);
   transform-origin: left center;
   transform: rotateY(90deg);
@@ -592,7 +577,9 @@ html, body {
   cursor: pointer;
 }
 
-/* Rounded and shadowed on the OUTER edge only, offset away from the spine.
+/* Shadowed on the OUTER edge only, offset away from the spine. Corners are
+   square everywhere now — see .slot — so these rules no longer need to round
+   the fore-edge and leave the spine edge sharp.
 
    The spine edge carries no border at all. .slot borders all four sides, so two
    abutting pages put 2px of --line down the gutter, and the spread read as two
@@ -608,7 +595,6 @@ html, body {
    Currently invisible: --gutter-shade is at zero alpha (see :root). The geometry
    is left in place so the crease comes back by raising that one value. */
 .page-content--right .slot {
-  border-radius: 0 var(--radius) var(--radius) 0;
   border-left-width: 0;
   box-shadow:
     3px 0 5px rgba(0, 0, 0, 0.07),
@@ -618,7 +604,6 @@ html, body {
 }
 
 .page-content--left .slot {
-  border-radius: var(--radius) 0 0 var(--radius);
   border-right-width: 0;
   box-shadow:
     -3px 0 5px rgba(0, 0, 0, 0.07),
@@ -751,7 +736,7 @@ body.is-morphing .refine {
   transform: translateX(-50%) scale(1.15);
 }
 
-/* Labels double as jump targets. Same treatment as .slot-label. */
+/* Labels double as jump targets. */
 .scrub-labels {
   position: relative;
   height: 14px;
@@ -1046,10 +1031,6 @@ body.is-morphing .refine {
   border-color: var(--orange);
   border-style: dashed;
   background: rgba(255, 90, 31, 0.04);
-}
-
-.is-dragover .slot-empty span {
-  color: var(--orange);
 }
 
 /* ==========================================================================
