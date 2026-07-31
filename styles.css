@@ -71,7 +71,13 @@
      gutter sealed by pile depth this no longer has a tear to hide, so it stopped
      needing to be dark. */
   --gutter-tint: #f4f2ee;
-  --gutter-shade: rgba(0, 0, 0, 0.2); /* the crease: a narrow band on the spine */
+  /* The crease: a narrow dark band on the spine. Fully transparent now — with
+     every page bound at the spine there is no seam left to shade, and the band
+     read as a grey smudge down the middle of the spread rather than as a fold.
+     Zeroing the alpha turns it off in both places it is drawn (the .book-paper
+     gradient and the inset on each page's spine edge, see .page-content) without
+     dismantling either, so raising it is all it takes to get the crease back. */
+  --gutter-shade: rgba(0, 0, 0, 0);
   /* 0 now. This oversized .book-paper to hide the height shortfall of a page
      fanned back mid-turn — but pile depth keeps both spread pages at full height
      always, so the only thing it did was ring the book with a pale halo. Kept as
@@ -452,16 +458,17 @@ html, body {
 
    1. the empty half of a single-page spread — Cover alone, page 7 alone — which
       is why the tint is near-white and reads as a blank facing page;
-   2. the crease, a narrow shaded band on the spine.
+   2. the crease, a narrow shaded band on the spine — currently invisible, since
+      --gutter-shade is at zero alpha (see :root). The gradient stays so the band
+      returns by raising that one value.
 
    It is no longer covering a mid-turn gap: pile depth keeps the top page of each
    pile full size and flush at the spine, so the halves are always covered by
-   real pages. The band is deliberately tight — wide enough to read as a crease,
-   narrow enough that it never darkens page content near the gutter.
+   real pages.
 
-   Oversized vertically by --gutter-bleed, since a page fanned back to pile depth
-   1+ scales its height down with its width. No border: a light hairline would
-   peek past a rotated page's edge. */
+   Still oversized vertically by --gutter-bleed, but that token is 0 now and the
+   height reduces to --page-h — see its entry in :root for why. No border: a light
+   hairline would peek past a rotated page's edge. */
 .book-paper {
   position: absolute;
   top: 50%;
@@ -593,11 +600,13 @@ html, body {
    joins them: with box-sizing: border-box the page's footprint is unchanged and
    its content simply gains that 1px.
 
-   The gutter is drawn instead as an inset shade on the page itself, which reads
-   as the crease AND as the paper starting to curve into it. Drawn on the page
-   rather than on .book-paper behind, so it cannot be revealed or hidden by
-   whatever the leaves happen to be doing. Every page gets this, not just the
-   spread — they are all bound at the same spine. */
+   The inset shade below is the crease — the paper starting to curve into the
+   gutter. Drawn on the page rather than on .book-paper behind, so it cannot be
+   revealed or hidden by whatever the leaves happen to be doing, and every page
+   gets it, not just the spread; they are all bound at the same spine.
+
+   Currently invisible: --gutter-shade is at zero alpha (see :root). The geometry
+   is left in place so the crease comes back by raising that one value. */
 .page-content--right .slot {
   border-radius: 0 var(--radius) var(--radius) 0;
   border-left-width: 0;

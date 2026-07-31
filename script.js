@@ -784,10 +784,10 @@ let ROT_FLIPPED; // rest angle, turned onto the left
 let FLIP_MS; // tracks --flip-duration; drives the settle timer in liftRange
 
 /**
- * BOOK_SPAN — how wide the deck is, in page widths. A receding page steps out
- * by FAN_X but also narrows by FAN_W, so the overhang past the resting spread
- * is only the difference: 0.0375 of a page each side at the defaults, not the
- * full step.
+ * BOOK_SPAN — how wide the deck is, in page widths. A receding page stays pinned
+ * to the spine and splays at the fore-edge only, so each side reaches
+ * 1 + FAN_OUT * maxPileDepth page widths out: 0.025 of a page of overhang per
+ * side at the defaults.
  *
  * Rest angles — the open-book tilt, each outer edge leaning slightly towards
  * the viewer. The sign asymmetry is correct: a right-side page's outer edge is
@@ -1114,11 +1114,12 @@ function pageFacesCamera(p, i) {
 
 /**
  * Flat (no-rotation) viewport box for page `p`'s leaf at spread `i`, derived
- * from the same slotAtDepth() the real book positions itself with. `left`
- * flips meaning on a turned leaf — see the comment on slotAtDepth — so the
- * subtraction here is the same one applyScene never needs, because it's
- * positioning a leaf that then does its own rotating; here there is no
- * rotation, so the visual edge has to be resolved up front.
+ * from the same slotAtDepth() the real book positions itself with. `slot.left`
+ * is always the spine (every page is bound there), and a turned leaf hangs off
+ * it to the LEFT — so its visual left edge is a page width back. applyScene
+ * never needs that subtraction because it positions a leaf that then rotates
+ * itself onto the correct side; here there is no rotation, so the visual edge
+ * has to be resolved up front.
  */
 function bookBoxFor(p, i, bookRect) {
   const j = p >> 1;
