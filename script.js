@@ -1553,39 +1553,42 @@ cropDone.addEventListener("click", closeEditor);
 /* ==========================================================================
    Export — sheet geometry
    ==========================================================================
-   A4 landscape, 4 columns x 2 rows. The grid spans the whole sheet on purpose:
-   you fold paper edge-to-edge, so the creases land on the sheet's true
-   midlines and the cell boundaries have to agree with them. Keeping content
-   clear of the printer's unprintable margin is the inset's job instead.
+   A4 landscape. Superseded 2026-08-01: pages used to sit centred in a full-
+   bleed sheet-spanning cell with a 5mm content-safe inset, because 4:5 doesn't
+   divide evenly into an A4 eighth (§7's original compromise). The Figma spec
+   instead trims the sheet down to an exact 4:5 grid first — 4 columns x 2 rows
+   of 196x245pt cells, butted edge to edge with no inset — and prints the
+   leftover paper as a cut border around it. Fold creases land on the trimmed
+   block's own midlines, not the full sheet's, so trimming has to happen
+   before creasing (see FOLD_STEPS — a step was inserted for it).
    ========================================================================== */
 
 const MM_PER_INCH = 25.4;
+const PT_PER_INCH = 72;
 const DPI = 300;
 
 const SHEET_MM = { w: 297, h: 210 };
-const CELL_MM = { w: SHEET_MM.w / 4, h: SHEET_MM.h / 2 }; // 74.25 x 105
-const CELL_INSET_MM = 5; // clear of both the cut line and the printer's margin
 
-/**
- * Largest 4:5 page that fits inside a cell's inset box — the same "tighter
- * axis wins" logic as fitTiles(), in millimetres. Width is the binding
- * constraint on A4, which leaves ~14.7mm of vertical slack per cell.
- */
-function fitPage() {
-  const boxW = CELL_MM.w - CELL_INSET_MM * 2;
-  const boxH = CELL_MM.h - CELL_INSET_MM * 2;
-  const w = Math.min(boxW, boxH * FRAME_AR);
-  return { w, h: w / FRAME_AR };
-}
+// The Figma spec, in points (196x245 = exactly 4:5).
+const CELL_PT = { w: 196, h: 245 };
+const CELL_MM = {
+  w: (CELL_PT.w / PT_PER_INCH) * MM_PER_INCH,
+  h: (CELL_PT.h / PT_PER_INCH) * MM_PER_INCH,
+}; // 69.14 x 86.43
 
-const PAGE_MM = fitPage(); // 64.25 x 80.31
+// 4 columns x 2 rows of cells, trimmed free of the sheet.
+const BLOCK_MM = { w: CELL_MM.w * 4, h: CELL_MM.h * 2 }; // 276.58 x 172.86
 
-// The slack is split evenly, so every page prints with the same margin at head
-// and foot and nothing sits near the cut line.
-const PAGE_OFFSET_MM = {
-  x: CELL_INSET_MM,
-  y: (CELL_MM.h - PAGE_MM.h) / 2,
+// Centres the trimmed block on the sheet — this is also where the cut lines
+// get drawn, since they run along the block's own edge, not the paper's.
+const BLOCK_OFFSET_MM = {
+  x: (SHEET_MM.w - BLOCK_MM.w) / 2, // ~10.2mm
+  y: (SHEET_MM.h - BLOCK_MM.h) / 2, // ~18.6mm
 };
+
+// The page now fills its cell exactly — no inset, nothing left over to centre.
+const PAGE_MM = { w: CELL_MM.w, h: CELL_MM.h };
+const PAGE_OFFSET_MM = { x: 0, y: 0 };
 
 /**
  * Print resolution, rounded so 4:5 survives as whole pixels. A frame whose
@@ -1595,7 +1598,7 @@ const PAGE_OFFSET_MM = {
 const PAGE_PX = (() => {
   const w = Math.round((PAGE_MM.w / MM_PER_INCH) * DPI / 4) * 4;
   return { w, h: (w / 4) * 5 };
-})(); // 760 x 950
+})(); // 816 x 1020
 
 /**
  * Where each page lands on the sheet, read off the supplied imposition
@@ -1815,23 +1818,77 @@ function exportPdf(canvases) {
     doc.addImage(
       data,
       hasPhoto ? "JPEG" : "PNG",
-      cell.col * CELL_MM.w + PAGE_OFFSET_MM.x,
-      cell.row * CELL_MM.h + PAGE_OFFSET_MM.y,
+      cell.col * CELL_MM.w + BLOCK_OFFSET_MM.x + PAGE_OFFSET_MM.x,
+      cell.row * CELL_MM.h + BLOCK_OFFSET_MM.y + PAGE_OFFSET_MM.y,
       PAGE_MM.w,
       PAGE_MM.h
     );
   });
 
+  drawCutMarks(doc);
+
   doc.save("minikomi.pdf");
+}
+
+/**
+ * Trim marks around the block, plus a CUT label centred in each margin —
+ * vector, drawn straight onto the PDF page rather than baked into the page
+ * canvases, so they stay crisp and can never land over a photo.
+ *
+ * Margin-only ticks, not full-length crosshairs: each line is drawn as the two
+ * stubs that live *outside* the block, so the photo edges stay clean and you
+ * still line a straightedge up across the sheet. The stub runs from the paper
+ * edge to the block corner, which is what makes the two on any given side read
+ * as one interrupted line.
+ *
+ * Weight is deliberately unsubtle. These get cut away, and a mark you have to
+ * hunt for is a mark that doesn't work — 0.2mm at 33% ink antialiased to
+ * roughly nothing at the zoom most PDF viewers open at.
+ *
+ * Each label is rotated to read right-side-up once that edge is turned to
+ * face the reader (spin the sheet toward you from that edge).
+ */
+function drawCutMarks(doc) {
+  const bx0 = BLOCK_OFFSET_MM.x;
+  const by0 = BLOCK_OFFSET_MM.y;
+  const bx1 = bx0 + BLOCK_MM.w;
+  const by1 = by0 + BLOCK_MM.h;
+
+  doc.setDrawColor(90);
+  doc.setLineWidth(0.35);
+  doc.setLineDashPattern([1.5, 1.5], 0);
+
+  // Horizontals: stub in from the left paper edge, and in from the right.
+  [by0, by1].forEach((y) => {
+    doc.line(0, y, bx0, y);
+    doc.line(bx1, y, SHEET_MM.w, y);
+  });
+  // Verticals: stub down from the top paper edge, and up from the bottom.
+  [bx0, bx1].forEach((x) => {
+    doc.line(x, 0, x, by0);
+    doc.line(x, by1, x, SHEET_MM.h);
+  });
+
+  doc.setLineDashPattern([], 0);
+
+  doc.setFont("courier", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(90);
+
+  const textOpts = { align: "center", baseline: "middle" };
+  doc.text("CUT", SHEET_MM.w / 2, by0 / 2, { ...textOpts, angle: 180 });
+  doc.text("CUT", SHEET_MM.w / 2, SHEET_MM.h - by0 / 2, { ...textOpts, angle: 0 });
+  doc.text("CUT", bx0 / 2, SHEET_MM.h / 2, { ...textOpts, angle: 90 });
+  doc.text("CUT", SHEET_MM.w - bx0 / 2, SHEET_MM.h / 2, { ...textOpts, angle: -90 });
 }
 
 /* ==========================================================================
    Print — fold-and-cut guide
    ==========================================================================
-   Five steps over one SVG. The sheet, the folded strip and the finished booklet
-   are separate groups that cross-fade, rather than one shape being morphed —
-   flat, legible at modal size, and nothing to go wrong across browsers. True
-   perspective folding belongs with the phase 7 flourish.
+   Six steps over one SVG. The margin, the trimmed block, the folded strip and
+   the finished booklet are separate groups that cross-fade, rather than one
+   shape being morphed — flat, legible at modal size, and nothing to go wrong
+   across browsers. True perspective folding belongs with the phase 7 flourish.
 
    The diagram is drawn in millimetres (viewBox 297x210), so every cell, crease
    and cut line is placed straight from the export geometry above and can't
@@ -1842,6 +1899,10 @@ const FOLD_STEPS = [
   {
     title: "Print",
     text: "Print on A4, single-sided, at actual size. Turn off “fit to page” — if the printer shrinks the sheet, the folds won’t line up.",
+  },
+  {
+    title: "Trim",
+    text: "Cut along the dashed border on all four sides, following the CUT marks. What's left is the working sheet the pages are printed on.",
   },
   {
     title: "Crease",
@@ -1921,54 +1982,84 @@ function buildFoldStage(canvases) {
   const { w: cw, h: ch } = CELL_MM;
   const { w: pw, h: ph } = PAGE_MM;
   const off = PAGE_OFFSET_MM;
+  // The trimmed block, centred on the sheet — same offset the export uses, so
+  // this diagram can't drift from what actually prints.
+  const bx0 = BLOCK_OFFSET_MM.x;
+  const by0 = BLOCK_OFFSET_MM.y;
+  const bx1 = bx0 + BLOCK_MM.w;
+  const by1 = by0 + BLOCK_MM.h;
 
-  // --- the flat sheet, steps 1-3 -----------------------------------------
+  // --- the margin, steps 1-2: what gets trimmed away ----------------------
+  const cutLabel = (x, y, angle) =>
+    `<text class="fs-cut-label" x="${x}" y="${y}" transform="rotate(${angle} ${x} ${y})">CUT</text>`;
+  const margin =
+    `<path class="fs-margin-fill" fill-rule="evenodd" d="M0 0H${SHEET_MM.w}V${SHEET_MM.h}H0Z M${bx0} ${by0}H${bx1}V${by1}H${bx0}Z"/>` +
+    // Margin-only ticks, matching drawCutMarks — the stubs outside the block,
+    // so the page edges stay clean.
+    `<g class="fs-trimline">
+       <line x1="0" y1="${by0}" x2="${bx0}" y2="${by0}"/>
+       <line x1="${bx1}" y1="${by0}" x2="${SHEET_MM.w}" y2="${by0}"/>
+       <line x1="0" y1="${by1}" x2="${bx0}" y2="${by1}"/>
+       <line x1="${bx1}" y1="${by1}" x2="${SHEET_MM.w}" y2="${by1}"/>
+       <line x1="${bx0}" y1="0" x2="${bx0}" y2="${by0}"/>
+       <line x1="${bx0}" y1="${by1}" x2="${bx0}" y2="${SHEET_MM.h}"/>
+       <line x1="${bx1}" y1="0" x2="${bx1}" y2="${by0}"/>
+       <line x1="${bx1}" y1="${by1}" x2="${bx1}" y2="${SHEET_MM.h}"/>
+     </g>` +
+    cutLabel(SHEET_MM.w / 2, by0 / 2, 180) +
+    cutLabel(SHEET_MM.w / 2, SHEET_MM.h - by0 / 2, 0) +
+    cutLabel(bx0 / 2, SHEET_MM.h / 2, 90) +
+    cutLabel(SHEET_MM.w - bx0 / 2, SHEET_MM.h / 2, -90);
+
+  // --- the trimmed block, steps 1-4 ---------------------------------------
   const cells = IMPOSITION.map(
     (cell, i) =>
-      `<image href="${thumbs[i]}" x="${cell.col * cw + off.x}" y="${
-        cell.row * ch + off.y
+      `<image href="${thumbs[i]}" x="${cell.col * cw + bx0 + off.x}" y="${
+        cell.row * ch + by0 + off.y
       }" width="${pw}" height="${ph}" preserveAspectRatio="none"/>`
   ).join("");
 
   const creases = [
-    `<line x1="0" y1="${ch}" x2="${SHEET_MM.w}" y2="${ch}"/>`,
+    `<line x1="${bx0}" y1="${by0 + ch}" x2="${bx1}" y2="${by0 + ch}"/>`,
     ...[1, 2, 3].map(
-      (c) => `<line x1="${c * cw}" y1="0" x2="${c * cw}" y2="${SHEET_MM.h}"/>`
+      (c) =>
+        `<line x1="${bx0 + c * cw}" y1="${by0}" x2="${bx0 + c * cw}" y2="${by1}"/>`
     ),
   ].join("");
 
-  // --- the cut, step 3 ---------------------------------------------------
+  // --- the cut, step 4 -----------------------------------------------------
   // Spans the two middle columns, exactly as on the supplied diagram.
-  const cutFrom = cw;
-  const cutTo = cw * 3;
+  const cutFrom = bx0 + cw;
+  const cutTo = bx0 + cw * 3;
+  const cutY = by0 + ch;
   const cut =
-    `<line class="fs-halo" x1="${cutFrom}" y1="${ch}" x2="${cutTo}" y2="${ch}"/>` +
-    `<line class="fs-cutline" x1="${cutFrom}" y1="${ch}" x2="${cutTo}" y2="${ch}"/>` +
-    [cutFrom, (cutFrom + cutTo) / 2, cutTo].map((x) => scissors(x, ch)).join("");
+    `<line class="fs-halo" x1="${cutFrom}" y1="${cutY}" x2="${cutTo}" y2="${cutY}"/>` +
+    `<line class="fs-cutline" x1="${cutFrom}" y1="${cutY}" x2="${cutTo}" y2="${cutY}"/>` +
+    [cutFrom, (cutFrom + cutTo) / 2, cutTo].map((x) => scissors(x, cutY)).join("");
 
-  // --- the folded strip, step 4 ------------------------------------------
-  // Half height, so the sheet's midline is now its top edge and the cut is an
+  // --- the folded strip, step 5 ------------------------------------------
+  // Half height, so the block's midline is now its top edge and the cut is an
   // opening along it. Only the bottom row faces this way.
   const stripY = (SHEET_MM.h - ch) / 2;
   const bottomRow = IMPOSITION.map((cell, i) => ({ ...cell, i })).filter(
     (cell) => cell.row === 1
   );
   const strip =
-    `<path class="fs-paper-edge" d="M0 ${stripY}L${cutFrom} ${stripY}M${cutTo} ${stripY}L${SHEET_MM.w} ${stripY}
-       M0 ${stripY}L0 ${stripY + ch}L${SHEET_MM.w} ${stripY + ch}L${SHEET_MM.w} ${stripY}"/>` +
+    `<path class="fs-paper-edge" d="M${bx0} ${stripY}L${cutFrom} ${stripY}M${cutTo} ${stripY}L${bx1} ${stripY}
+       M${bx0} ${stripY}L${bx0} ${stripY + ch}L${bx1} ${stripY + ch}L${bx1} ${stripY}"/>` +
     `<line class="fs-slit" x1="${cutFrom}" y1="${stripY}" x2="${cutTo}" y2="${stripY}"/>` +
     bottomRow
       .map(
         (cell) =>
-          `<image href="${thumbs[cell.i]}" x="${cell.col * cw + off.x}" y="${
+          `<image href="${thumbs[cell.i]}" x="${cell.col * cw + bx0 + off.x}" y="${
             stripY + off.y
           }" width="${pw}" height="${ph}" preserveAspectRatio="none"/>`
       )
       .join("") +
-    arrow(14, stripY + ch + 16, 52, stripY + ch + 16) +
-    arrow(SHEET_MM.w - 14, stripY + ch + 16, SHEET_MM.w - 52, stripY + ch + 16);
+    arrow(bx0 + 14, stripY + ch + 16, bx0 + 52, stripY + ch + 16) +
+    arrow(bx1 - 14, stripY + ch + 16, bx1 - 52, stripY + ch + 16);
 
-  // --- the finished booklet, step 5 --------------------------------------
+  // --- the finished booklet, step 6 ---------------------------------------
   const bh = 150;
   const bw = bh * FRAME_AR;
   const bx = (SHEET_MM.w - bw) / 2;
@@ -1985,14 +2076,15 @@ function buildFoldStage(canvases) {
 
   foldStage.innerHTML = `
     <svg viewBox="0 0 ${SHEET_MM.w} ${SHEET_MM.h}" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <g class="fs-margin">${margin}</g>
       <g class="fs-sheet">
-        <rect class="fs-paper" x="0" y="0" width="${SHEET_MM.w}" height="${SHEET_MM.h}" rx="1"/>
+        <rect class="fs-paper" x="${bx0}" y="${by0}" width="${BLOCK_MM.w}" height="${BLOCK_MM.h}" rx="1"/>
         ${cells}
         <g class="fs-creases">${creases}</g>
       </g>
       <g class="fs-folds">
-        ${arrow(SHEET_MM.w / 2 - 42, 22, SHEET_MM.w / 2 - 42, SHEET_MM.h - 22)}
-        ${arrow(28, SHEET_MM.h / 2 - 34, SHEET_MM.w - 28, SHEET_MM.h / 2 - 34)}
+        ${arrow(SHEET_MM.w / 2 - 42, by0 + 16, SHEET_MM.w / 2 - 42, by1 - 16)}
+        ${arrow(bx0 + 24, SHEET_MM.h / 2 - 34, bx1 - 24, SHEET_MM.h / 2 - 34)}
       </g>
       <g class="fs-cut">${cut}</g>
       <g class="fs-strip">${strip}</g>

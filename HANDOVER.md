@@ -101,15 +101,30 @@ quieter, and multi-line notices dwell 5s instead of 3.2s.
   single-sided, folds to read 1→8; photos rendered with their 4:5 crops;
   cover text baked in; ~300 DPI. Empty slots export blank.
 - Fold-and-cut instructions are shown when the user clicks PRINT IT. Built in
-  6b as a five-step modal; PRINT IT opens it, and the PDF downloads from inside.
+  6b as a five-step modal, grown to six in phase 10 (Trim); PRINT IT opens it,
+  and the PDF downloads from inside.
 - PRINT IT is disabled until ≥1 photo is placed.
-- Pages stay **4:5**, which does not match the 1:√2 A4 eighth. The page is
-  centred in its cell and the leftover prints as head/foot padding — decided
-  2026-07-30 in preference to re-cropping what the user framed in Refine.
-- Each cell carries a **5mm content-safe inset**. The cell *grid* still spans the
-  full sheet, because paper is folded edge-to-edge and the creases have to land
-  on the sheet's true midlines; the inset is what keeps content clear of the cut
-  line and of whatever a non-borderless printer trims.
+- **Sheet geometry, superseded 2026-08-01 (phase 10).** Pages used to stay 4:5
+  centred in a full-bleed, sheet-spanning cell with a 5mm content-safe inset —
+  4:5 doesn't divide evenly into the 1:√2 A4 eighth, and the leftover printed
+  as head/foot padding (the original 2026-07-30 call, in preference to
+  re-cropping what the user framed in Refine). A supplied Figma spec replaced
+  that: the sheet is trimmed down to an exact 4:5 grid first — 4 columns x 2
+  rows of 196x245pt cells, butted edge to edge, no inset — and the leftover
+  paper (~10.2mm sides, ~18.6mm top/bottom) prints as a cut border instead.
+  Fold creases land on the *trimmed block's* midlines, not the full sheet's,
+  so trimming has to happen before creasing — see the new Trim step below.
+  Geometry lives in script.js under "Export — sheet geometry"
+  (`CELL_PT` / `CELL_MM` / `BLOCK_MM` / `BLOCK_OFFSET_MM`).
+- The PDF's trim marks + CUT labels are vector (`drawCutMarks`), not baked into
+  the page canvases, so they stay crisp and can never land over a photo. They
+  are **margin-only ticks** — each of the four lines is drawn as the two stubs
+  outside the block rather than a full-length crosshair, so the photo edges stay
+  clean (decided 2026-08-01; the Figma showed full-length lines). Weight is
+  0.35mm at 65% ink: the first pass used 0.2mm at 33% and was invisible at the
+  zoom most PDF viewers open at, which read as an empty sheet. The fold guide's
+  `.fs-trimline` / `.fs-cut-label` in styles.css are matched to it by eye — if
+  one changes, change the other.
 
 ## 8. Privacy & state
 - Fully ephemeral — nothing persists; images never leave the device.
@@ -126,6 +141,17 @@ quieter, and multi-line notices dwell 5s instead of 3.2s.
   orange accent reserved for the primary action.
 - Tooltips on all icon controls.
 - (The faint background shapes in the mocks are a watermark — ignore.)
+- **Sizing pass, 2026-08-01.** Tightened up post-phase-10:
+  - `.title` ("Minikomi") 44px → 24px.
+  - Mode toggle: wrapper padding 8px → 4px, icon 20px → 16px, each cell
+    (`.mode-btn` / `.mode-toggle-thumb`) 40px → 32px — 16px icon + 8px internal
+    padding a side. Cells stay fixed-size rather than real `padding` on purpose:
+    the thumb's slide-to-mask trick (§13, Mode morph notes) matches two cells'
+    pixel widths against each other, so it can't be content-derived. Track
+    padding (the "rails") was already 4px, unchanged.
+  - `.mode-toggle` / `.print-btn` border-radius 16px → 12px.
+  - `.print-btn` padding `20px 32px` → `12px 16px`. `.print-btn--modal` (the
+    fold-guide's download button) shares the base rule, so it moved too.
 
 ## 11. Build process (MVP 1)
 Phased; Claude stops for review after each phase:
@@ -149,6 +175,10 @@ Phased; Claude stops for review after each phase:
    2026-07-30. Also added the dev flip tuner (`#tune`).
 9. ✅ Mode morph — toggling Arrange↔Refine flies all 8 pages together instead
    of cutting between surfaces.
+10. ✅ Trimmed A4 layout — sheet geometry rebuilt to a supplied Figma spec: an
+    exact 4:5, 196x245pt cell grid with no inset, trimmed free of the sheet
+    instead of centred in a full-bleed cell with head/foot padding (§7). Added
+    vector CUT marks to the PDF and a Trim step to the fold-and-cut guide.
 
 Deferred to MVP 2: iPad/mobile responsiveness + tap-to-select.
 Deferred out of phase 8: the pages' *curvature* (§ Phase 8 notes).
@@ -165,11 +195,14 @@ Deferred out of phase 8: the pages' *curvature* (§ Phase 8 notes).
       the back page** (the cell marked `1` is also marked BACK PAGE, `2` is
       FRONT PAGE); see the comment above `IMPOSITION` for the reconciliation.
 - [x] Fold-and-cut instruction copy — drafted in 6b (`FOLD_STEPS` in script.js),
-      not supplied. Edit the wording there; it's five plain strings.
+      not supplied; grown to six strings in phase 10 (Trim added). Edit the
+      wording there.
 - [x] Refine/booklet mode mockup — none supplied; phases 4–5 derived the surface
       (spread, crop editor, scrub bar) from the Arrange visual language. Send one
       if it should look different.
-- [x] Paper spec — A4 landscape, 5mm cell inset, 300 DPI (decided 2026-07-30)
+- [x] Paper spec — A4 (842×595pt) landscape, 196×245pt cells (4:5, no inset),
+      300 DPI. Supplied via Figma 2026-08-01 (phase 10); supersedes the
+      2026-07-30 5mm-inset spec (§7).
 - [ ] Sample photos, mixed orientations (currently testing with generated images)
 
 Fonts not specified, so: Geist Mono for UI, Caveat for the italic display title

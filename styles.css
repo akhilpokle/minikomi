@@ -148,7 +148,7 @@ html, body {
   font-family: var(--display);
   font-weight: 600;
   font-style: italic;
-  font-size: 44px;
+  font-size: 24px;
   margin: 0;
   color: var(--ink);
 }
@@ -862,8 +862,8 @@ body.is-morphing .refine {
 .mode-toggle {
   display: flex;
   background: var(--white);
-  border-radius: 16px;
-  padding: 8px;
+  border-radius: 12px;
+  padding: 4px;
   box-shadow: 0 0 6px rgba(0, 0, 0, 0.25);
 }
 
@@ -878,10 +878,13 @@ body.is-morphing .refine {
   padding: 4px;
 }
 
+/* 32px cell = 16px icon + 8px internal padding each side. Fixed rather than
+   real `padding`, because the thumb's sliding-mask trick below needs a cell
+   size in px to match against — it can't be derived from content. */
 .mode-btn {
   position: relative;
-  width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
   border: none;
   border-radius: 6px;
   background: transparent;
@@ -892,19 +895,19 @@ body.is-morphing .refine {
 }
 
 .mode-btn img {
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
 }
 
 /* Level 3: thumb — an opaque white pill that slides over the track and masks
    whichever cell it's covering. It never resizes or fades; it only ever
    translates, which is what makes the motion read as one pill masking past
-   both icons rather than two icons cross-fading. */
+   both icons rather than two icons cross-fading. Sized to match .mode-btn. */
 .mode-toggle-thumb {
   position: absolute;
   inset: 4px auto auto 4px;
-  width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
   border-radius: 6px;
   background: var(--white);
   box-shadow: 0 0 3px rgba(0, 0, 0, 0.2);
@@ -933,8 +936,8 @@ body.is-morphing .refine {
 
 .mode-toggle-ink-icon::before {
   content: "";
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   background-color: #ff3d00;
   mask-repeat: no-repeat;
   mask-position: center;
@@ -977,8 +980,8 @@ body.is-morphing .refine {
   color: var(--white);
   background: #ff3d00;
   border: 2px solid #da1d00;
-  border-radius: 16px;
-  padding: 20px 32px;
+  border-radius: 12px;
+  padding: 12px 16px;
   box-shadow:
     inset 0 -5px 3px 0 rgba(0, 0, 0, 0.11),
     inset 0 4px 0 0 #ff673e;
@@ -1303,7 +1306,34 @@ body.is-morphing .refine {
   stroke-width: 0.5;
 }
 
-/* Layers cross-fade; only the flat sheet persists across steps 1-3. */
+/* The margin that gets trimmed away — filled with the page background rather
+   than a dim overlay, so it reads as "not paper" against the white block
+   instead of as a shadow on it. Present for Print and Trim (steps 1-2); fading
+   it out at step 3 is the trim itself, so the sheet reads as shrunk down to
+   the block from then on. */
+.fold-stage .fs-margin-fill {
+  fill: var(--bg);
+}
+
+/* Weight tracks drawCutMarks in script.js — the diagram and the sheet it
+   describes have to read the same. */
+.fold-stage .fs-trimline {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 0.9;
+  stroke-dasharray: 3 2.5;
+}
+
+.fold-stage .fs-cut-label {
+  fill: var(--muted);
+  font-family: var(--mono);
+  font-size: 6.5px;
+  letter-spacing: 0.05em;
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+
+/* Layers cross-fade; the trimmed block persists across steps 1-4. */
 .fold-stage .fs-folds,
 .fold-stage .fs-cut,
 .fold-stage .fs-strip,
@@ -1312,20 +1342,28 @@ body.is-morphing .refine {
   transition: opacity 0.28s ease;
 }
 
-.fold-stage .fs-sheet {
+.fold-stage .fs-sheet,
+.fold-stage .fs-margin {
   opacity: 1;
   transition: opacity 0.28s ease;
 }
 
-.fold-stage[data-step="2"] .fs-folds,
-.fold-stage[data-step="3"] .fs-cut,
-.fold-stage[data-step="4"] .fs-strip,
-.fold-stage[data-step="5"] .fs-booklet {
+.fold-stage[data-step="3"] .fs-folds,
+.fold-stage[data-step="4"] .fs-cut,
+.fold-stage[data-step="5"] .fs-strip,
+.fold-stage[data-step="6"] .fs-booklet {
   opacity: 1;
 }
 
-.fold-stage[data-step="4"] .fs-sheet,
-.fold-stage[data-step="5"] .fs-sheet {
+.fold-stage[data-step="3"] .fs-margin,
+.fold-stage[data-step="4"] .fs-margin,
+.fold-stage[data-step="5"] .fs-margin,
+.fold-stage[data-step="6"] .fs-margin {
+  opacity: 0;
+}
+
+.fold-stage[data-step="5"] .fs-sheet,
+.fold-stage[data-step="6"] .fs-sheet {
   opacity: 0;
 }
 
@@ -1335,7 +1373,7 @@ body.is-morphing .refine {
   transition: stroke-dashoffset 0.5s ease 0.1s;
 }
 
-.fold-stage[data-step="3"] .fs-cutline {
+.fold-stage[data-step="4"] .fs-cutline {
   stroke-dashoffset: 0;
 }
 
