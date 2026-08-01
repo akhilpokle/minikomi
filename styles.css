@@ -66,11 +66,6 @@
   --paper-z: 0.5px;
   --edge-thickness: 3px;  /* paper thickness — absolute, doesn't scale */
   --edge-color: #d8d5cc;
-  /* What shows in the empty half of a single-page spread (Cover, page 7) and in
-     the crease. Near-white, because it reads as a blank facing page — with the
-     gutter sealed by pile depth this no longer has a tear to hide, so it stopped
-     needing to be dark. */
-  --gutter-tint: #f4f2ee;
   /* The crease: a narrow dark band on the spine. Fully transparent now — with
      every page bound at the spine there is no seam left to shade, and the band
      read as a grey smudge down the middle of the spread rather than as a fold.
@@ -198,7 +193,6 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
   padding: 0 40px;
 }
 
@@ -222,7 +216,6 @@ html, body {
 .slot {
   position: relative;
   background: var(--white);
-  border: 1px solid var(--line);
   overflow: hidden;
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.02);
 }
@@ -438,17 +431,17 @@ html, body {
   perspective: var(--perspective);
 }
 
-/* Behind every leaf. Two jobs, neither of them patching a tear any more:
+/* Behind every leaf. One job left, and it's currently invisible:
 
-   1. the empty half of a single-page spread — Cover alone, page 7 alone — which
-      is why the tint is near-white and reads as a blank facing page;
-   2. the crease, a narrow shaded band on the spine — currently invisible, since
-      --gutter-shade is at zero alpha (see :root). The gradient stays so the band
-      returns by raising that one value.
+   the crease, a narrow shaded band on the spine — invisible since --gutter-shade
+   is at zero alpha (see :root). The gradient stays so the band returns by
+   raising that one value.
 
-   It is no longer covering a mid-turn gap: pile depth keeps the top page of each
-   pile full size and flush at the spine, so the halves are always covered by
-   real pages.
+   No longer tinted: the empty half of a single-page spread (Cover alone, page 7
+   alone) now shows whatever is behind the book rather than a near-white fill.
+   It is also no longer covering a mid-turn gap: pile depth keeps the top page of
+   each pile full size and flush at the spine, so the halves are always covered
+   by real pages.
 
    Still oversized vertically by --gutter-bleed, but that token is 0 now and the
    height reduces to --page-h — see its entry in :root for why. No border: a light
@@ -460,7 +453,6 @@ html, body {
   width: 100%;
   height: calc(var(--page-h) + var(--gutter-bleed) * 2);
   transform: translateY(-50%);
-  background-color: var(--gutter-tint);
   background-image: linear-gradient(
     to right,
     rgba(0, 0, 0, 0) 44%,
@@ -571,6 +563,7 @@ html, body {
   --tile-w: var(--page-w);
   width: var(--page-w);
   height: var(--page-h);
+  border: none;
 }
 
 .page--filled {
@@ -581,12 +574,6 @@ html, body {
    square everywhere now — see .slot — so these rules no longer need to round
    the fore-edge and leave the spine edge sharp.
 
-   The spine edge carries no border at all. .slot borders all four sides, so two
-   abutting pages put 2px of --line down the gutter, and the spread read as two
-   loose sheets butted together instead of one bound spread. Removing it is what
-   joins them: with box-sizing: border-box the page's footprint is unchanged and
-   its content simply gains that 1px.
-
    The inset shade below is the crease — the paper starting to curve into the
    gutter. Drawn on the page rather than on .book-paper behind, so it cannot be
    revealed or hidden by whatever the leaves happen to be doing, and every page
@@ -595,7 +582,6 @@ html, body {
    Currently invisible: --gutter-shade is at zero alpha (see :root). The geometry
    is left in place so the crease comes back by raising that one value. */
 .page-content--right .slot {
-  border-left-width: 0;
   box-shadow:
     3px 0 5px rgba(0, 0, 0, 0.07),
     inset calc(var(--page-w) * var(--gutter-curl)) 0
@@ -604,7 +590,6 @@ html, body {
 }
 
 .page-content--left .slot {
-  border-right-width: 0;
   box-shadow:
     -3px 0 5px rgba(0, 0, 0, 0.07),
     inset calc(var(--page-w) * var(--gutter-curl) * -1) 0
