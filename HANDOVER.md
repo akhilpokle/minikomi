@@ -175,6 +175,23 @@ quieter, and multi-line notices dwell 5s instead of 3.2s.
     `0` tilt, `12×`, and `0° → -180°` respectively. Left those notes
     unrewritten as the historical record of what phases 7/9 actually shipped.
 
+- **Tooltip clipping fix, 2026-08-02.** Every tooltip inside a `.slot` was
+  being cut off by that rule's `overflow: hidden` — which is load-bearing (it
+  is what crops the photo, see §13) and can't be dropped. `[data-tip]::after`
+  defaults to sitting *above* its anchor, which for a slot is outside the box:
+  - Arrange's hover toolbar buttons start 10px from the slot's top edge, so
+    their tips landed at about `y = -20px` and showed as a dark sliver. They
+    now hang below the button.
+  - Delete is the rightmost button, 24px from the slot's edge, and a centred
+    ~56px tip overflowed. That one right-anchors; the wider "Drag to reorder"
+    stays centred, as it sits far enough in.
+  - Refine's "Crop this page" tip is set on the page element *itself*
+    (`buildPage`), so it was **entirely** invisible rather than trimmed. It now
+    sits inside the page's bottom edge.
+
+  The general trap: a tooltip on, or near the top edge of, anything carrying
+  `.slot` must be positioned to land *within* the slot.
+
 ## 11. Build process (MVP 1)
 Phased; Claude stops for review after each phase:
 

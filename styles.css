@@ -12,6 +12,9 @@
   --white: #ffffff;
   --orange: #ff5a1f;
   --orange-dark: #e6480f;
+  /* Hotter than --orange on purpose, and deliberately not it: --orange is
+     reserved for the primary action (PRINT IT), this frames a photo on hover. */
+  --photo-frame: #ff3d00;
   --radius: 6px;
   --gap: 22px;
   --tile-w: 220px;   /* Arrange tile   — set by script.js */
@@ -325,13 +328,19 @@ html, body {
   color: var(--muted);
 }
 
-/* hover toolbar — revealed on filled slots only */
+/* hover toolbar — revealed on filled slots only. Flush to the tile's top-right
+   corner, one solid panel rather than three floating circles; only the
+   bottom-left corner rounds, since the other three sit on the tile's own edge
+   (top/right) or against the next icon (bottom-right). */
 .slot-toolbar {
   position: absolute;
-  top: 10px;
-  right: 10px;
+  top: 0;
+  right: 0;
   display: flex;
-  gap: 6px;
+  gap: 4px;
+  padding: 4px;
+  background: var(--white);
+  border-radius: 0 0 0 8px;
   z-index: 3;
   opacity: 0;
   pointer-events: none;
@@ -344,28 +353,57 @@ html, body {
   pointer-events: auto;
 }
 
+/* Hover frame on a photo — the drag affordance, alongside the toolbar above.
+   Arrange only: a Refine page is a sheet of paper being turned, and a hot
+   orange frame there would fight --edge-color and the gutter treatment.
+
+   `outline`, not `border`, and that is the whole point. .slot-photo is
+   `inset: 0`, which resolves against the PADDING box, so a border would push
+   the photo inward and re-crop it. An outline is excluded from layout
+   entirely: it draws OUTWARD into the 22px --gap (leaving 14px clear to the
+   neighbour), so the photo is neither moved nor covered, and nothing reflows.
+
+   Nor is it clipped — .slot's own `overflow: hidden` clips its descendants,
+   not its own outline. That is also why this can't be a ::after at
+   `inset: -8px`, which would be a descendant and would get cut off.
+
+   Corners: an outline follows the box's border-radius, and for a uniform ring
+   the outer radius is always the inner radius plus the outline width. So 8px
+   here rounds the photo's own corners (overflow: hidden clips them to match)
+   and puts the outer silhouette at 16px. 8px on BOTH edges is geometrically
+   impossible for an even 8px ring — at radius 0 the inner corner is square,
+   which is what this looked like before. */
+.grid .slot--filled:hover {
+  border-radius: 8px;
+  outline: 8px solid var(--photo-frame);
+}
+
+/* Flat icons on the panel now that .slot-toolbar itself carries the
+   background — an own circle/border/shadow per button would double it up. */
 .slot-toolbar button {
   position: relative;
   width: 28px;
   height: 28px;
-  border-radius: 50%;
-  border: 1px solid var(--line);
-  background: var(--white);
+  border: none;
+  background: none;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  opacity: 1;
+  transition: opacity 0.12s ease;
 }
 
-.slot-toolbar button:hover {
-  border-color: var(--line-strong);
+/* Focusing one action de-emphasises its siblings rather than highlighting the
+   active one — cheaper than a hover state per icon and reads the same. */
+.slot-toolbar:hover button:not(:hover) {
+  opacity: 0.5;
 }
 
 .slot-toolbar img,
 .slot-toolbar svg {
-  width: 15px;
-  height: 15px;
+  width: 24px;
+  height: 24px;
   pointer-events: none;
 }
 
@@ -409,6 +447,35 @@ html, body {
 /* Footer tooltips sit above the controls, clear of the viewport edge. */
 .controls [data-tip]::after {
   bottom: calc(100% + 10px);
+}
+
+/* Anything carrying .slot clips its own tooltip: `overflow: hidden` there is
+   what crops the photo (see .leaf-face) and can't be dropped. So tips inside a
+   slot have to be positioned to land *within* it, not above it. */
+
+/* The toolbar buttons sit 4px from the slot's top edge (the panel's own
+   padding), so a tip above them would render at roughly y = -20px and be cut
+   off. Hang them below instead — the tile is ~190px+ tall, so there is room
+   to spare. */
+.slot-toolbar [data-tip]::after {
+  bottom: auto;
+  top: calc(100% + 7px);
+}
+
+/* Delete is the last button and its centre is only ~18px from the slot's
+   right edge (4px panel padding + half the 28px button), which a ~56px
+   centred tip overflows. Anchor that one to the button's right edge; the
+   wider "Drag to reorder" tip is far enough in to stay centred. */
+.slot-toolbar button:last-child[data-tip]::after {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+
+/* A Refine page's tip is on the .slot itself, so *any* position outside the box
+   is fully invisible rather than merely trimmed. Sit it inside the bottom edge. */
+.page[data-tip]::after {
+  bottom: 12px;
 }
 
 /* ==========================================================================
