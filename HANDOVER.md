@@ -136,9 +136,10 @@ quieter, and multi-line notices dwell 5s instead of 3.2s.
 - jsPDF via CDN allowed (app code only; user images never uploaded).
 
 ## 10. Visual language
-- Monospace UI + italic display title, light dotted-grid background, thin
-  borders with a contrast bump (so it doesn't read as half-loaded), a single
-  orange accent reserved for the primary action.
+- Monospace UI + italic display title, light dotted-grid background, a single
+  orange accent reserved for the primary action. Tiles/pages used to carry a
+  thin border with a contrast bump (so it doesn't read as half-loaded) — see
+  the 2026-08-02 pass below, which dropped it for box-shadow alone.
 - Tooltips on all icon controls.
 - (The faint background shapes in the mocks are a watermark — ignore.)
 - **Sizing pass, 2026-08-01.** Tightened up post-phase-10:
@@ -152,6 +153,27 @@ quieter, and multi-line notices dwell 5s instead of 3.2s.
   - `.mode-toggle` / `.print-btn` border-radius 16px → 12px.
   - `.print-btn` padding `20px 32px` → `12px 16px`. `.print-btn--modal` (the
     fold-guide's download button) shares the base rule, so it moved too.
+- **Border/shadow/flip tuning pass, 2026-08-02.**
+  - `.slot`'s `border: 1px solid var(--line)` is gone. Everything that carries
+    `.slot` — Arrange tiles, Refine pages, the crop editor frame — now reads
+    its edge from `box-shadow` alone; `.page`'s spine-side shadow
+    (`.page-content--right/left .slot`) is unchanged from phase 8.
+  - `.book-paper`'s `background-color` (`--gutter-tint`, near-white) is
+    removed, along with the now-unused token. The empty half of a
+    single-page spread (Cover alone, page 7 alone) now shows whatever is
+    behind the book instead of a blank fill.
+  - `.grid-wrap`'s `overflow: hidden` is removed. Phase 7's note (§13) that
+    the fanned book "would otherwise clip" without it no longer has that
+    backstop — `fitTiles`/`BOOK_SPAN` still keep the fan inside the box at
+    rest, but an overshoot mid-morph or mid-resize is no longer clipped.
+  - Flip tokens retuned via the flip lab's dev tuner (`#tune`): `--book-tilt`
+    5 → 0, `--fan-out-ratio` 0.0125 → 0.01, `--perspective-ratio` 3.5 → 12.
+    The book now sits perfectly flat (no open-book lean) under a much
+    shallower 3D perspective. **Supersedes** the specific numbers quoted in
+    the Phase 7/9 notes below — the `BOOK_TILT` tilt approximation, the
+    `3.5×` perspective figure, and the `-5° → -175°` rest angles are now
+    `0` tilt, `12×`, and `0° → -180°` respectively. Left those notes
+    unrewritten as the historical record of what phases 7/9 actually shipped.
 
 ## 11. Build process (MVP 1)
 Phased; Claude stops for review after each phase:
@@ -179,6 +201,15 @@ Phased; Claude stops for review after each phase:
     exact 4:5, 196x245pt cell grid with no inset, trimmed free of the sheet
     instead of centred in a full-bleed cell with head/foot padding (§7). Added
     vector CUT marks to the PDF and a Trim step to the fold-and-cut guide.
+11. ✅ Centred booklet — the spine now recentres a lone Cover/page-7 on
+    screen and slides back to the middle as the opposite page arrives,
+    instead of sitting welded to the screen's centre line at every scene
+    (which put a lone page half a page off-centre). See § Phase 11 notes.
+12. ✅ Scrub bar restyle — a fixed 280x24 pill with a wide sliding orange
+    block, to a supplied spec, replacing the percentage-wide rail/dot/label
+    bar. Also fixed a real clearance bug the old bar had: the turning page's
+    perspective bulge could exceed the fixed 18px gap above it. See § Phase
+    12 notes.
 
 Deferred to MVP 2: iPad/mobile responsiveness + tap-to-select.
 Deferred out of phase 8: the pages' *curvature* (§ Phase 8 notes).
@@ -281,11 +312,25 @@ Things worth knowing before editing:
   directly would re-wrap the cover title on every frame of a flip, because
   `.cover-title` is `calc(var(--tile-w) * 0.092)`. Don't "simplify" it to a
   percentage width.
-- **The scrub bar is positioned in percentages, never measured pixels.** It
-  lives inside `#refine-browse`, which is `hidden` in Arrange mode and while the
-  crop editor is open — a `getBoundingClientRect()` there returns 0 and the
-  thumb would collapse to the left edge. Percentages also survive a resize with
-  no JS. Same reasoning as the crop transform.
+- **The scrub bar is a fixed-px control (phase 12), positioned by unitless
+  fraction, never measured pixels.** It's a constant 280x24 pill now, not
+  sized off `--page-w`, and `.scrub-thumb`/`.scrub-tick` read `--scrub-pos`/
+  `--tick-pos` (0..1, written by `syncScrubber()`/`buildScrubber()`) through a
+  `calc()` that owns every actual dimension. It lives inside `#refine-browse`,
+  which is `hidden` in Arrange mode and while the crop editor is open — a
+  `getBoundingClientRect()` there would return 0, which is exactly why nothing
+  reads one at layout time. `sceneFromPointer()` is the one place raw pixels
+  come back in, to turn a click/drag position into that same fraction — see §
+  Phase 12 notes for why it has to know the thumb's own width, not just the
+  track's.
+- **`.book` carries its own transform (phase 11).** `--book-shift`
+  (`bookShift()`, written by `applyScene()`) recentres a lone Cover/page-7 and
+  slides back to the middle as the opposite page arrives; it does *not* resize
+  `--page-w`, on purpose (§ Phase 11 notes: same reflow trap as the fan). This
+  makes `.book` a stacking context, which is why the leaf/tile z-index scheme
+  above stays safe — nothing outside `.book` ever reads a leaf's z-index. The
+  morph needs no code for this: `morphModes()` reads `bookEl.getBoundingClientRect()`
+  after landing the shift, so `bookBoxFor()` picks it up for free.
 - **`[hidden] { display: none !important }`** in styles.css is load-bearing —
   the surfaces are toggled with the `hidden` attribute and `.grid { display:
   grid }` would otherwise outrank the UA rule.
@@ -299,7 +344,183 @@ config in `.claude/launch.json`), then open http://localhost:5173.
 Add `#tune` to the URL for the flip tuner (§ Phase 8 notes).
 
 Phase 4 was reviewed and signed off by the user on 2026-07-29.
-Phases 5, 6a, 6b, 7, 8 and 9 are built and awaiting review.
+Phases 5, 6a, 6b, 7, 8, 9, 10, 11 and 12 are built and awaiting review.
+
+### Phase 12 notes — scrub bar restyle
+Built to a supplied spec (280x24px pill, 1px `#F2F2F2` border, `0 0 2px
+rgba(0,0,0,.1)` shadow, 2px inner padding, `#FF3D00` sliding block) plus a
+photo of the target look. Two things it changes about the control, not just
+its skin:
+
+- **The bar is no longer sized off the spread.** `.scrubber` used to be
+  `calc(var(--page-w) * 2)` so it "read as part of the booklet" (§ Phase 5
+  notes). The new spec is a fixed-px control, so it no longer grows or
+  shrinks with the book — at a large window the bar now reads as visibly
+  narrower than the spread above it. Flagged, not fixed: revisit only if it
+  reads wrong in practice.
+- **Labels are gone; the dots and `aria-valuetext` take over their two jobs.**
+  The five text labels ("COVER", "1–2", …) that used to double as jump
+  targets and a position readout are removed — the spec's dots have no room
+  for text. Nothing is lost functionally: `scrubTrack`'s existing
+  `pointerdown` → `scrubDrag` already navigates from a click anywhere on the
+  track, dots included, since they're non-interactive and the click bubbles;
+  `aria-valuetext` (already wired) is still updated on every move. `spreadLabel()`
+  is deleted as dead code; `spreadAria()` stays.
+
+**Geometry, not eyeballed.** The thumb is a wide block now, not a dot.
+`--scrub-thumb-w` started as a *derived* value — exactly 1/5 of the track's
+inner width (padding-box, minus the border, minus 2x the 2px pad), which made
+the thumb's own width equal one step of travel and let 5 stops tile the track
+edge to edge with no gap or overlap (`TRAVEL = LAST_SPREAD * SCRUB_THUMB_W`
+fell out of the same fraction both ways). **Changed 2026-08-02 to a literal
+`52px`** (down from the tiling value of ~54.8px) — a couple of px narrower
+than exact, so a parked thumb now shows a small gap either side rather than
+sitting flush. Both `.scrub-thumb`'s `left` and each `.scrub-tick`'s centre
+still read that same `--scrub-thumb-w`, and script.js reads it too (via
+`token()`, since it's a plain literal now rather than a `calc()` that
+`getComputedStyle` can't resolve) — so all three still cannot drift apart from
+each other, even though the value itself is chosen rather than derived.
+
+- **script.js writes only a unitless fraction.** `syncScrubber()` sets
+  `--scrub-pos` (thumb) and `buildScrubber()` sets `--tick-pos` per dot, both
+  0..1 — the same `spreadFraction()` used before, just no longer turned into
+  a `%` string. Every actual pixel dimension is CSS's; this is a tighter
+  version of the "positioned in percentages, never measured pixels" rule
+  (§13), not a departure from it — with a fixed-px bar there's nothing left
+  to measure at layout time at all.
+- **A border and a padding are two different insets, and the browser only
+  gives you one for free.** An absolutely-positioned child's containing block
+  is the *padding* box of its ancestor — the border is already excluded, but
+  the 2px `padding` CSS property does nothing for an absolutely-positioned
+  child (padding only pushes normal-flow content). So the border is
+  compensated once, in `--scrub-inner` (`--scrub-w` minus 2x
+  `--scrub-border-w`), and the 2px pad is added explicitly in every position
+  calc (`--scrub-pad + ...`) — get either step backwards and the pad ends up
+  2px on one edge of the track and 0px on the other at full travel, instead of
+  symmetric.
+- **`sceneFromPointer()` needed a real fix, not just a restyle.** It used to
+  map the pointer linearly across the *whole* track — correct for a
+  zero-width thumb, wrong for a 55px block: a pointer at the track's right
+  edge would run the drag a half-thumb-width ahead of where the thumb's
+  centre actually was. It now maps against the thumb's own travel range and
+  re-centres on the thumb's width, using the same `--scrub-border-w` /
+  `--scrub-pad` tokens CSS reads (`SCRUB_BORDER_PX` / `SCRUB_PAD_PX` /
+  `SCRUB_THUMB_PX` / `SCRUB_TRAVEL_PX`, read via `token()`), so the JS and CSS
+  geometry can't disagree.
+
+**The clearance bug.** "The slide should not touch the page when it's
+turning" turned out to be a real defect in the old fixed `18px` gap
+(`SCRUB_RESERVE`/`.refine-browse`'s `gap`), not just a spacing preference.
+Mid-turn a leaf sits edge-on to the viewer, and under `perspective`
+(`--perspective-ratio`) its outer edge magnifies and overshoots its own
+resting box vertically by roughly `pageH / (2 * (PERSPECTIVE_RATIO - 1))` —
+at the shipped `12x` ratio and a typical page height that is comfortably more
+than 18px, so the turning page could clip the bar. `layoutSurfaces()` now
+computes the actual bulge (`k = 0.5 / (PERSPECTIVE_RATIO - 1)`) and divides
+the book's height budget by `(1 + k)` up front — the closed form that reserves
+exactly the clearance the resulting page size will go on to need, rather than
+an iterated guess — then writes that clearance to `--scrub-gap`
+(`.refine-browse`'s `gap`). `SCRUB_RESERVE` (a flat 64px, sized for the old
+bar-plus-labels) is replaced by `SCRUB_BAR_H` (reads `--scrub-h`) and
+`SCRUB_GAP_MIN` (an 18px floor on top of the computed bulge). This tracks the
+flip tuner automatically: changing `--perspective-ratio` there already
+re-runs `layoutSurfaces()`, so the gap re-derives with it.
+
+**Thumb face, 2026-08-02 addendum.** `.scrub-thumb` moved from a flat
+`#ff3d00` fill to a radial gradient (`#ff673e` → `#ff3d00`) with a 1px
+`#da1d00` stroke, to a supplied spec. Two `::before`/`::after` rectangles
+(24x16px each, 2px gap, centred via flex) sit inside it, echoing the
+booklet's two pages, each shaded toward the centre gap with a 1px inset
+shadow. **The fit is exact, not coincidental:** `.scrub-thumb` is
+border-box, so its own 1px stroke already eats into the 52x18 box, landing
+the content area at exactly 50x16 — precisely `24 + 2px gap + 24` wide and
+16 tall. No extra centring math was needed; flex alignment has zero slack to
+resolve. `flex-shrink: 0` on the rectangles guards against them being
+squeezed by any sub-pixel rounding of `--scrub-thumb-w`/`--scrub-h`.
+
+**Header-overlap fix, 2026-08-02 addendum.** The clearance work above only
+budgeted the turning page's perspective bulge (§ this phase's opening notes)
+*below* the book, for the scrub bar. The same bulge is symmetric — it
+overshoots the resting box by an equal amount *above* the book too, since a
+leaf's transform-origin is its own vertical centre. `.refine` centres the
+book+scrubber block inside `.grid-wrap`, so the slack above the book always
+equals the slack below the scrubber; the original `(1 + k)` divisor spent
+that entire budget on `pageH` and the bottom clearance, leaving exactly zero
+slack above by construction. With `.grid-wrap`'s `overflow: hidden` gone
+(§10, 2026-08-02), an unbudgeted top bulge had nowhere to go but up and out —
+overlapping `.app-header`'s "Privacy first zine maker." tagline during a mid
+turn, since nothing clips it any more.
+
+Fixed by funding the bulge three times over instead of once:
+`bookAvailH = (availH - SCRUB_BAR_H - SCRUB_GAP_MIN) / (1 + 3k)`. Solving
+`slack_above = (availH - blockHeight) / 2 >= k * pageH` for the divisor is
+where the `3` comes from — one `k` for the bottom bulge (already inside
+`--scrub-gap`), one because that same bulge is *subtracted twice* in the
+slack-above algebra (it shrinks `blockHeight` from both where it sits and
+where the required slack is measured against), landing on `1 + 3k` as the
+exact closed form: `blockHeight` comes out to `availH - 2k*pageH`, which
+splits into `k*pageH` of slack on each side — exactly the bulge, no more, no
+less. No `SCRUB_GAP_MIN`-equivalent was added above, deliberately: there's no
+adjacent control up there to clear, just static header text, so headroom of
+exactly the bulge (not bulge-plus-margin) is enough.
+
+### Phase 11 notes — centred booklet
+- **The spine used to be welded to the screen's centre line at every scene**,
+  because `.book` is `2 × pageW` wide and flex-centred, and every leaf pivots
+  at `left: pageW` regardless of scene (§13, "every page is bound at the
+  spine"). That's correct for a two-page spread but puts a lone Cover or page
+  7 half a page off-centre, since only one side of the book is ever drawn
+  there.
+- **The fix is one property on `.book`, not on the leaves.** `shiftAtScene(i)`
+  returns `-pageW/2` at scene 0 (Cover alone, drawn right of the spine),
+  `+pageW/2` at `LEAF_COUNT` (page 7 alone, drawn left of it), and `0`
+  everywhere a spread is showing — where the spine already is the centre
+  line. `bookShift(t)` lerps between the two scenes bracketing a fractional
+  `t`, same interpolation style as the leaf lerps in `applyScene()`. Written
+  as `--book-shift` on `.book` itself and consumed as a `translateX`, so the
+  leaves' own geometry (`slotAtDepth`, `depthAt`) is completely untouched —
+  the whole feature is the book sliding as one rigid unit under content that
+  didn't need to change.
+- **One write site, every path inherits it.** `bookShift()` is called from
+  inside `applyScene()`, which is already the single funnel for rest states,
+  the scrub drag, keyboard jumps, and a resize's instant re-land — so all of
+  them pick up the recentring with no separate code path to keep in sync.
+- **Linear, deliberately, not eased to the 90° crossing.** Turning the cover,
+  the opposite page doesn't visually appear until the leaf passes edge-on, so
+  a linear shift is very slightly ahead of what's on screen at the midpoint of
+  a turn. Left as the simpler default with a comment naming the smoothstep
+  swap (`f * f * (3 - 2f)`) — a two-second change once it's been seen moving,
+  same reasoning as the flip tuner existing at all.
+- **`.book` gaining a `transform` makes it a stacking context.** The leaves'
+  z-index (1-100) and the morph's tile z-index (50-300, written on the
+  Arrange tiles, not the leaves) were already scoped so that nothing outside
+  `.book` reads a leaf's z-index — so this is inert, but it's a real change
+  in what `.book` is, worth knowing before adding anything else that assumes
+  flat stacking.
+- **The Arrange↔Refine morph needed no code.** `morphModes()` reads
+  `bookEl.getBoundingClientRect()` after `instantly(() => applyScene(spread))`
+  lands the shift, and `bookBoxFor()` derives every flying tile's landing box
+  from that rect — so the tiles fly to the recentred Cover/page-7 the moment
+  the shift exists, both directions, automatically.
+- **Not moved: the scrub bar.** It stays centred under the resting spread's
+  own box (`width: calc(var(--page-w) * 2)`) rather than tracking the book's
+  shift — a control that slid out from under the pointer mid-drag would be
+  unusable. At the Cover/page-7 ends the bar is therefore no longer centred
+  under the visible page; revisit only if that reads wrong in practice.
+- **Not resized: `--page-w`.** Growing the lone page to fill the freed screen
+  width was considered and rejected — `--page-w` drives `.cover-title` via
+  `calc(var(--tile-w) * 0.092)` (§13), so resizing it would re-wrap the cover
+  title on every frame of a scrub. This phase is position-only.
+- **The flip lab needed updating too**, since it re-evaluates `applyScene`'s
+  *text* inside a sandboxed scope (`flip.js`'s `linkGeometry`) rather than
+  importing it — `shiftAtScene`/`bookShift` were added to `NEEDS`, and
+  `bookEl` to the sandbox's `env`, or the borrowed `applyScene` throws on the
+  new reference. `#lab-spine` (a sibling of `#book`, not a descendant, so it
+  doesn't inherit the inline `--book-shift`) is now offset by
+  `geo.bookShift(scene)` directly in `apply()`, or the hairline stops marking
+  the real spine at the end scenes. The probe itself needed no change — it
+  reads a leaf's own `left` CSS property via `getComputedStyle`, which the
+  parent's transform doesn't touch.
 
 ### Phase 9 notes — mode morph
 - **The Arrange tiles are the actors in both directions, never the book's own
@@ -325,7 +546,9 @@ Phases 5, 6a, 6b, 7, 8 and 9 are built and awaiting review.
   edge. Covered by the cross-fade — the tile is fading out at the same spot
   the real (tilted) page is fading in. If it ever reads as a pop, the fix is a
   `rotateY` on the tile with `transform-origin` at the spine; held off adding
-  it until it's shown to matter.
+  it until it's shown to matter. **Superseded 2026-08-02** (§10): `BOOK_TILT`
+  is 0 now, so rest pages are flat rectangles too and this approximation no
+  longer approximates anything.
 - **Both surfaces are mounted at once for the length of the flight** — a
   deliberate, commented exception to the "call `render()`, not the surface
   renderers" rule (§13), because computing the flight needs both sets of
@@ -489,9 +712,10 @@ then extended so the scrub bar drives it continuously.
 - `liftRange()` handles multi-scene jumps, which turn several leaves at once and
   read as a riffle. Ordered so the leaf ending on top of its side is highest.
 - **Two values that could not be copied from the spec.** Perspective is set from
-  JS as 3.5× page width — the source's fixed `1200px` was tuned for a 340px page
-  and over-distorts Minikomi's ~580px one. Duration is 400ms, not 700ms: 700
-  feels slow for 8 pages and much slower again while scrubbing.
+  JS as 3.5× page width (**superseded 2026-08-02, now 12×** — §10) — the source's
+  fixed `1200px` was tuned for a 340px page and over-distorts Minikomi's ~580px
+  one. Duration is 400ms, not 700ms: 700 feels slow for 8 pages and much slower
+  again while scrubbing.
 - **Layout.** The fan overhangs the resting spread, so the book is wider than two
   pages and `.grid-wrap` would otherwise clip it. *(Phase 8 changed the numbers:
   the overhang is now `(MAX_DEPTH - 1) * (FAN_X - FAN_W) = 0.025` of a page each
@@ -549,7 +773,9 @@ behaviour they wanted.
 - **`.book-paper` stopped being a patch.** With the gutter sealed its jobs are the
   empty half of a single-page spread (Cover alone, page 7 alone) and the crease.
   Hence near-white rather than the dark tint an earlier pass gave it, plus a tight
-  shaded band on the spine only.
+  shaded band on the spine only. **Superseded 2026-08-02** (§10): the near-white
+  fill itself is gone too, so the empty half now shows through to whatever is
+  behind the book; only the (currently invisible) crease shading remains.
 - **The first and last turns still expose one half**, by construction — there is
   no page on that side yet. That is correct book behaviour, not a regression.
 - **Not done: the pages are flat.** The storyboard's pages are *curved* — bowed at
@@ -581,7 +807,9 @@ and readable on both sides, and it's the same mechanism in both projects:
 - **One rotation drives the whole flip** — resting-right to resting-left
   (`0° → -180°` in the reference; `ROT_RIGHT → ROT_FLIPPED` here, i.e.
   `-5° → -175°`, short of a full half-turn because `BOOK_TILT` is baked into the
-  rest angles rather than left flat).
+  rest angles rather than left flat). **Superseded 2026-08-02** (§10):
+  `BOOK_TILT` is 0, so `ROT_RIGHT → ROT_FLIPPED` is now the same clean
+  `0° → -180°` as the reference.
 - **The back face is pre-rotated 180° in the markup**, so that once the leaf
   itself has swung -180°, the back face's *net* rotation is 0° — right-way-round
   and readable, not mirrored.
@@ -628,3 +856,15 @@ tap-to-select), which §2 defers.
 5. **Try the phase 9 mode morph** — toggle Arrange↔Refine at different spreads,
    and try re-toggling mid-flight and resizing mid-flight. Also unopened in a
    browser by Claude.
+6. **Try the phase 11 recentring** — scrub to the Cover and to page 7 and
+   check the lone page sits centred rather than off to one side; scrub across
+   the whole range and watch the spine slide; check the Arrange↔Refine morph
+   still lands cleanly on a recentred Cover/page-7. Also unopened in a
+   browser by Claude.
+7. **Check the phase 12 scrub bar against the supplied photo** — pixel specs
+   (280x24, 1px border, 2px pad, `#FF3D00` block) were coded exactly, but
+   whether it *reads* right next to the actual booklet, and whether a fixed
+   280px bar looks right against a large spread, are calls only the photo can
+   settle. Also drag to both ends and confirm the block's edges land flush
+   inside the pill with no overshoot, and that the turning page now clears it
+   with room to spare. Also unopened in a browser by Claude.

@@ -93,6 +93,24 @@
   --morph-duration: 320ms;
   --morph-stagger: 28ms;
   --morph-ease: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* The scrub bar. A fixed-size pill, not sized off the spread — see .scrubber.
+     --scrub-w is the outer (border-box) width; an absolutely-positioned
+     child's containing block is the PADDING box, which the browser already
+     excludes the border from, so --scrub-inner (border subtracted) is what
+     the travel maths below is built on, not --scrub-w directly.
+     --scrub-thumb-w is a literal 52px, not derived — at 5 stops the exact
+     tiling width would be 1/5 of the inner track (~54.8px, no gap or overlap
+     between resting positions); 52px leaves a small gap either side of a
+     parked thumb instead. script.js reads this same token via token(), so
+     the pointer-drag maths (sceneFromPointer) can't disagree with it. */
+  --scrub-w: 280px;
+  --scrub-h: 24px;
+  --scrub-border-w: 1px;
+  --scrub-pad: 2px;
+  --scrub-inner: calc(var(--scrub-w) - var(--scrub-border-w) * 2);
+  --scrub-thumb-w: 52px;
+  --scrub-gap: 18px; /* clearance to the spread; recomputed by layoutSurfaces() */
 }
 
 * { box-sizing: border-box; }
@@ -404,12 +422,15 @@ html, body {
   justify-content: center;
 }
 
-/* The spread sits above its scrub bar. */
+/* The spread sits above its scrub bar. Gap is not a fixed value: a turning
+   leaf bulges past its own box under perspective (edge-on, magnified toward
+   the viewer), so --scrub-gap is computed per layout in layoutSurfaces() —
+   just the clearance floor here as a pre-JS fallback. */
 .refine-browse {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 18px;
+  gap: var(--scrub-gap, 18px);
 }
 
 /* ==========================================================================
@@ -423,12 +444,22 @@ html, body {
    z-index — and the transitions below perform the entire turn. All four
    properties must share one duration and easing, or a page's size and its
    rotation desynchronise mid-turn and the flip reads as broken.
+
+   .book itself carries a fifth: --book-shift (applyScene(), read into the
+   transform below), which recentres a lone Cover/page-7 and slides the spine
+   back to the middle as the opposite page arrives. Same duration/easing token
+   as the leaves so the slide reads as one motion with the turn, not two. This
+   makes .book a stacking context — the leaves' z-index (1-100) and the
+   morph's tile z-index (50-300) are both scoped inside/outside it already, so
+   nothing outside .book ever reads a leaf's z-index and this is inert.
    ========================================================================== */
 .book {
   position: relative;
   width: calc(var(--page-w) * 2);
   height: var(--page-h);
   perspective: var(--perspective);
+  transform: translateX(var(--book-shift, 0px));
+  transition: transform var(--flip-duration) var(--flip-ease);
 }
 
 /* Behind every leaf. One job left, and it's currently invisible:
@@ -599,20 +630,24 @@ html, body {
 
 /* Land a layout with no animation — entering Refine, a rebuild, or a resize
    shouldn't animate from wherever the book happened to be. .page-content must
-   be named explicitly; `transition: none` does not inherit. */
+   be named explicitly; `transition: none` does not inherit. .book itself is
+   included so its own --book-shift transform lands instead of animating. */
+.book.is-instant,
 .book.is-instant .leaf,
 .book.is-instant .page-content {
   transition: none;
 }
 
-/* While the scrub bar is being dragged the page has to track the pointer
-   instead of easing behind it. */
+/* While the scrub bar is being dragged the page — and the spine's shift —
+   have to track the pointer instead of easing behind it. */
+.book.is-scrubbing,
 .book.is-scrubbing .leaf,
 .book.is-scrubbing .page-content {
   transition: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .book,
   .leaf,
   .page-content {
     transition: none;
@@ -631,131 +666,107 @@ body.is-morphing .refine {
 /* ==========================================================================
    Refine — scrub bar
    ==========================================================================
-   One control for both jobs: drag it to flip spreads, read it to see where you
-   are. Orange stays reserved for PRINT IT, so the active state is ink; orange
-   appears only as the focus ring.
+   A fixed-size pill (--scrub-w x --scrub-h, see :root) — one control for both
+   jobs: drag it to flip spreads, read it (via aria-valuetext) to see where you
+   are. Deliberately NOT sized off --page-w any more (§ Phase 12 notes) — a
+   control that resized itself with the spread would drift under a drag.
 
-   Everything is positioned in percentages. The bar is inside a surface that is
-   `hidden` in Arrange mode and while the crop editor is open, where measured
-   pixel widths would all come back 0 — and percentages survive a resize with
-   no JS besides.
-   ========================================================================== */
+   The thumb is a wide block, not a dot: --scrub-thumb-w (:root) sets its
+   width — 52px, a touch narrower than the 54.8px that would tile the 5 stops
+   edge to edge, so a parked thumb sits with a small gap either side of it.
+   .scrub-thumb's left and each .scrub-tick's centre both read the same
+   --scrub-thumb-w, so they can't drift apart even though it's a literal, not
+   a derived, value. script.js only ever writes a unitless fraction
+   (--scrub-pos / --tick-pos, 0..1) — every dimension is owned by CSS. */
 .scrubber {
-  /* Span exactly the resting spread, so the bar reads as part of the booklet. */
-  width: calc(var(--page-w) * 2);
   display: flex;
-  flex-direction: column;
-  gap: 10px;
+  justify-content: center;
 }
 
 .scrub-track {
   position: relative;
-  height: 20px; /* generous hit area around a 3px rail */
+  width: var(--scrub-w);
+  height: var(--scrub-h);
+  background: var(--white);
+  border: var(--scrub-border-w) solid #f2f2f2;
+  border-radius: 8px;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.1);
   cursor: pointer;
   touch-action: none; /* stop the browser claiming the drag as a scroll */
 }
 
-/* The rail itself — drawn, rather than sized, so the hit area stays tall. */
-.scrub-track::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 50%;
-  height: 3px;
-  margin-top: -1.5px;
-  background: var(--line);
-  border-radius: 2px;
-}
-
 .scrub-track:focus-visible {
   outline: none;
-}
-
-.scrub-track:focus-visible::before {
-  box-shadow: 0 0 0 2px var(--orange);
-}
-
-/* Progress through the booklet — width set by script.js. */
-.scrub-fill {
-  position: absolute;
-  left: 0;
-  top: 50%;
-  height: 3px;
-  margin-top: -1.5px;
-  background: var(--line-strong);
-  border-radius: 2px;
-}
-
-.scrub-tick {
-  position: absolute;
-  top: 50%;
-  width: 7px;
-  height: 7px;
-  margin: -3.5px 0 0 -3.5px;
-  border-radius: 50%;
-  background: var(--muted-light);
-}
-
-.scrub-thumb {
-  position: absolute;
-  top: 50%;
-  width: 15px;
-  height: 15px;
-  margin-top: -7.5px;
-  transform: translateX(-50%);
-  border-radius: 50%;
-  background: var(--ink);
-  /* Ticks come after the thumb in DOM order and would otherwise paint the
-     active stop's grey dot on top of it. */
-  z-index: 2;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
-  transition: transform 0.12s ease;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.1), 0 0 0 2px var(--orange);
 }
 
 .scrub-track.is-scrubbing {
   cursor: grabbing;
 }
 
-.scrub-track.is-scrubbing .scrub-thumb {
-  transform: translateX(-50%) scale(1.15);
-}
-
-/* Labels double as jump targets. */
-.scrub-labels {
-  position: relative;
-  height: 14px;
-}
-
-.scrub-label {
+/* Absolutely-positioned children (thumb, ticks) are placed against this
+   element's PADDING box, which the browser already excludes the border from —
+   so --scrub-pad below is the only inset either of them needs to add; the
+   border is accounted for once, in --scrub-inner (:root). */
+.scrub-tick {
   position: absolute;
-  top: 0;
-  transform: translateX(-50%);
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  color: var(--muted-light);
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  margin: -2px 0 0 -2px;
+  border-radius: 50%;
+  background: var(--muted-light);
+  /* Centred on the same stop the thumb parks on — see .scrub-thumb's left. */
+  left: calc(
+    var(--scrub-pad) + var(--scrub-thumb-w) / 2 + var(--tick-pos, 0) *
+      (var(--scrub-inner) - var(--scrub-pad) * 2 - var(--scrub-thumb-w))
+  );
 }
 
-.scrub-label:hover {
-  color: var(--muted);
+.scrub-thumb {
+  position: absolute;
+  top: var(--scrub-pad);
+  left: calc(
+    var(--scrub-pad) + var(--scrub-pos, 0) *
+      (var(--scrub-inner) - var(--scrub-pad) * 2 - var(--scrub-thumb-w))
+  );
+  width: var(--scrub-thumb-w);
+  height: calc(var(--scrub-h) - var(--scrub-border-w) * 2 - var(--scrub-pad) * 2);
+  border-radius: 6px;
+  background: radial-gradient(42.95% 55% at 50.96% 50%, #ff673e 0%, #ff3d00 100%);
+  border: 1px solid #da1d00;
+  /* Centres the two "page" rectangles below with a 2px gap — see their
+     comment for why this needs no extra sizing to make them fit exactly. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  /* Ticks are appended after it in DOM order (buildScrubber) and would
+     otherwise paint the parked stop's dot on top of it. */
+  z-index: 2;
 }
 
-.scrub-label.is-active {
-  color: var(--ink);
-  font-weight: 600;
+/* Two rectangles echoing the booklet's two pages, each shaded toward the
+   spine (the gap between them) with an inner shadow. border-box means the
+   thumb's own 1px stroke already eats into its box: content area lands at
+   exactly 50x16 (52x18 minus 1px each side), which is exactly 24 + 2 + 24
+   wide and 16 tall — the rects fill it edge to edge with zero slack, not by
+   coincidence. flex-shrink:0 keeps them from being squeezed under any
+   sub-pixel rounding of --scrub-thumb-w / --scrub-h. */
+.scrub-thumb::before,
+.scrub-thumb::after {
+  content: "";
+  width: 24px;
+  height: 16px;
+  flex-shrink: 0;
 }
 
-.scrub-label:focus-visible {
-  outline: none;
-  color: var(--ink);
-  box-shadow: 0 2px 0 0 var(--orange);
+.scrub-thumb::before {
+  box-shadow: inset -1px 1px 1px rgba(0, 0, 0, 0.1);
+}
+
+.scrub-thumb::after {
+  box-shadow: inset 1px 1px 1px rgba(0, 0, 0, 0.1);
 }
 
 /* ==========================================================================

@@ -34,9 +34,7 @@ const bookEl = document.getElementById("book");
 const editorEl = document.getElementById("editor");
 const editorFrame = document.getElementById("editor-frame");
 const scrubTrack = document.getElementById("scrub-track");
-const scrubFill = document.getElementById("scrub-fill");
 const scrubThumb = document.getElementById("scrub-thumb");
-const scrubLabels = document.getElementById("scrub-labels");
 const zoomSlider = document.getElementById("zoom-slider");
 const cropReset = document.getElementById("crop-reset");
 const cropDone = document.getElementById("crop-done");
@@ -858,6 +856,38 @@ function slotAtDepth(flipped, d) {
   };
 }
 
+/**
+ * How far the spine sits from the book's own centre at a settled scene: 0 at
+ * the ends, where only one page is drawn (Cover alone at scene 0, page 7
+ * alone at LEAF_COUNT), because a lone page reads best on the centre line,
+ * not the spine. Zero everywhere a spread is showing, where the spine
+ * already IS the centre line.
+ */
+function shiftAtScene(i) {
+  if (i <= 0) return -pageW / 2;
+  if (i >= LEAF_COUNT) return pageW / 2;
+  return 0;
+}
+
+/**
+ * bookShift(t) — companion to slotAtDepth, read by applyScene() and applied
+ * to .book itself via --book-shift (translateX). Linear between the two
+ * scenes bracketing `t`, same interpolation style as the leaf lerps below, so
+ * a half-turned cover has the spine half way through its slide.
+ *
+ * Deliberately linear rather than eased to the 90° crossing (where the
+ * opposite page actually appears) — easier to tune by eye later than to
+ * argue about now. Swap the lerp below for a smoothstep
+ * (f * f * (3 - 2 * f)) if the linear version reads as off-centre mid-turn.
+ */
+function bookShift(t) {
+  const i = clamp(Math.floor(t), 0, LEAF_COUNT);
+  const f = clamp(t - i, 0, 1);
+  const from = shiftAtScene(i);
+  const to = shiftAtScene(Math.min(i + 1, LEAF_COUNT));
+  return from + f * (to - from);
+}
+
 function bury(el, buried) {
   if (!el) return;
   el.inert = buried;
@@ -871,6 +901,13 @@ function bury(el, buried) {
  */
 function applyScene(t) {
   if (!leafEls.length || !pageW) return;
+
+  // Recentres a lone Cover/page-7 on screen and slides the spine back to the
+  // middle as the opposite page arrives. One property, read by every path
+  // that reaches here — rest states, the scrub drag, keyboard jumps, a
+  // resize's instant re-land — so the book and the flight below it can never
+  // disagree about where the spine is.
+  bookEl.style.setProperty("--book-shift", `${bookShift(t).toFixed(2)}px`);
 
   const i = clamp(Math.floor(t), 0, LEAF_COUNT);
   const f = clamp(t - i, 0, 1);
@@ -1256,28 +1293,37 @@ function morphModes(toRefine) {
    Refine — scrub bar
    ==========================================================================
    Navigation and position indicator in one control: drag it to flip spreads,
-   read it to see where you are in the booklet.
+   read it (via aria-valuetext) to see where you are in the booklet. No
+   visible text labels — see styles.css for why.
 
-   Stops, ticks and labels are all derived from SPREADS, like the page labels,
-   so the fold layout stays the single source of truth.
+   Stops and ticks are derived from SPREADS, like the page labels, so the fold
+   layout stays the single source of truth.
 
-   Positions are percentages, never measured pixels. The bar lives inside
-   #refine-browse, which is `hidden` in Arrange mode and while the crop editor
-   is open — getBoundingClientRect() would report 0 there, and the thumb would
-   collapse to the left edge. Percentages also survive a resize with no JS.
+   A fixed-px pill, not sized off --page-w (styles.css). script.js writes only
+   a unitless fraction per element (0..1); every actual dimension — thumb
+   width, travel range, the border/padding inset — is CSS's, computed once in
+   :root from --scrub-w/h/pad. SCRUB_TRAVEL_PX below is the one place that
+   maths gets duplicated into JS, and only because sceneFromPointer has to
+   convert a raw pointer position into that same fraction; it's derived from
+   the same tokens CSS reads, via token(), so the two can't drift.
    ========================================================================== */
 
 const LAST_SPREAD = SPREADS.length - 1;
 
-// Fraction along the track, 0 → 1. Evenly spaced, one stop per spread.
-function spreadFraction(index) {
-  return LAST_SPREAD === 0 ? 0 : index / LAST_SPREAD;
-}
+// Mirrors styles.css's geometry exactly: an inner width (padding-box, border
+// subtracted) the thumb travels across. --scrub-thumb-w is a literal in
+// :root, not derived, so it's read with token() rather than recomputed here
+// — same source both sides, so they can't drift.
+const SCRUB_BORDER_PX = token("--scrub-border-w", 1);
+const SCRUB_PAD_PX = token("--scrub-pad", 2);
+const SCRUB_INNER_PX = token("--scrub-w", 280) - SCRUB_BORDER_PX * 2;
+const SCRUB_THUMB_PX = token("--scrub-thumb-w", 52);
+const SCRUB_TRAVEL_PX = SCRUB_INNER_PX - SCRUB_PAD_PX * 2 - SCRUB_THUMB_PX;
 
-// "Cover", "1–2", "7" — positional naming, derived the same way the cards'
-// labels were before they came off.
-function spreadLabel(index) {
-  return SPREADS[index].map((i) => (i === 0 ? "Cover" : String(i))).join("–");
+// Fraction along the track, 0 → 1. Evenly spaced, one stop per spread. Also
+// doubles as the thumb's travel fraction — `pos` may be non-integer.
+function spreadFraction(pos) {
+  return LAST_SPREAD === 0 ? 0 : pos / LAST_SPREAD;
 }
 
 // Spoken form, for aria-valuetext.
@@ -1289,30 +1335,20 @@ function spreadAria(index) {
   return `Pages ${pages.join(" and ")}`;
 }
 
-// SPREADS is fixed, so the ticks and labels are built once and only restyled
-// afterwards — no DOM churn on every flip.
+// SPREADS is fixed, so the ticks are built once and only restyled afterwards
+// — no DOM churn on every flip.
 function buildScrubber() {
   scrubTrack.setAttribute("aria-valuemax", String(LAST_SPREAD));
   scrubTrack.querySelectorAll(".scrub-tick").forEach((el) => el.remove());
-  scrubLabels.innerHTML = "";
 
   SPREADS.forEach((_, index) => {
-    const pct = `${spreadFraction(index) * 100}%`;
-
     const tick = document.createElement("div");
     tick.className = "scrub-tick";
-    tick.style.left = pct;
+    tick.style.setProperty("--tick-pos", String(spreadFraction(index)));
+    tick.setAttribute("aria-hidden", "true");
+    // Appended after the thumb (already in index.html), which is what keeps
+    // it painting on top — see .scrub-thumb's z-index in styles.css.
     scrubTrack.appendChild(tick);
-
-    const label = document.createElement("button");
-    label.type = "button";
-    label.className = "scrub-label";
-    label.dataset.spread = String(index);
-    label.style.left = pct;
-    label.textContent = spreadLabel(index);
-    label.setAttribute("aria-label", `Go to ${spreadAria(index).toLowerCase()}`);
-    label.addEventListener("click", () => goToSpread(index));
-    scrubLabels.appendChild(label);
   });
 
   // Arrange is the opening mode, so the first render() never reaches the book —
@@ -1321,25 +1357,16 @@ function buildScrubber() {
 }
 
 /**
- * `pos` may be fractional mid-drag: the thumb and fill follow the pointer
- * continuously, while the labels and the announced value snap to the nearest
- * stop so the readout stays legible while a page is half-turned.
+ * `pos` may be fractional mid-drag: the thumb follows the pointer
+ * continuously via --scrub-pos, while the announced value snaps to the
+ * nearest stop so the readout stays legible while a page is half-turned.
  */
 function syncScrubber(pos = state.spread) {
-  const pct = `${spreadFraction(pos) * 100}%`;
-  scrubThumb.style.left = pct;
-  scrubFill.style.width = pct;
+  scrubThumb.style.setProperty("--scrub-pos", String(spreadFraction(pos)));
 
   const nearest = Math.round(pos);
   scrubTrack.setAttribute("aria-valuenow", String(nearest));
   scrubTrack.setAttribute("aria-valuetext", spreadAria(nearest));
-
-  Array.from(scrubLabels.children).forEach((label) => {
-    label.classList.toggle(
-      "is-active",
-      Number(label.dataset.spread) === nearest
-    );
-  });
 }
 
 let scrubbing = null; // { id } while a drag is in flight
@@ -1347,11 +1374,20 @@ let scrubbing = null; // { id } while a drag is in flight
 /**
  * Pointer x → a continuous scene, 0 .. LAST_SPREAD. Deliberately not snapped:
  * the fractional part is what turns the page under the pointer.
+ *
+ * Maps against the thumb's actual travel range, not the full track: the
+ * thumb is a wide block now, not a point, so a pointer at the track's right
+ * edge has to land the thumb's CENTRE there, not its left edge (which would
+ * run the drag a half-thumb-width ahead of the pointer at both ends).
  */
 function sceneFromPointer(clientX) {
   const rect = scrubTrack.getBoundingClientRect();
   if (rect.width === 0) return state.spread;
-  return clamp((clientX - rect.left) / rect.width, 0, 1) * LAST_SPREAD;
+  // rect.left is the track's outer (border) edge; the containing block for
+  // the thumb's `left` starts one border-width further in (the padding box).
+  const x =
+    clientX - rect.left - SCRUB_BORDER_PX - SCRUB_PAD_PX - SCRUB_THUMB_PX / 2;
+  return clamp(x / SCRUB_TRAVEL_PX, 0, 1) * LAST_SPREAD;
 }
 
 function scrubDrag(clientX) {
@@ -2308,7 +2344,8 @@ document.addEventListener("drop", (e) => {
 
 const GRID_GAP = 22;
 const SAFETY_MARGIN = 2;
-const SCRUB_RESERVE = 64; // scrub track + labels beneath the spread
+const SCRUB_BAR_H = token("--scrub-h", 24); // the pill itself
+const SCRUB_GAP_MIN = 18; // clearance floor atop the computed perspective bulge
 const CONTROLS_RESERVE = 66; // crop controls beneath the editor frame
 
 /**
@@ -2362,7 +2399,28 @@ function layoutSurfaces() {
   // The book is BOOK_SPAN page-widths across, not 2 — the fan overhangs the
   // resting spread and .grid-wrap clips. fitTiles takes that as a fractional
   // column count, which with no gap reduces to availW / BOOK_SPAN.
-  const book = fitTiles(availW, availH - SCRUB_RESERVE, BOOK_SPAN, 1, 0);
+  //
+  // The height budget also has to leave room for the turning page's own
+  // bulge, not just the scrub bar's box. Mid-turn a leaf is edge-on, and its
+  // outer edge — magnified by perspective toward the viewer — overshoots its
+  // resting box by roughly pageH / (2 * (PERSPECTIVE_RATIO - 1)) on each side
+  // (k * pageH below), symmetric above AND below the leaf's own vertical
+  // centre. .refine centers the book+scrubber block in .grid-wrap, so the
+  // slack above the book equals the slack below the scrubber — and with
+  // .grid-wrap's overflow: hidden gone (§10, 2026-08-02), an unbudgeted top
+  // bulge is free to bleed into the header above rather than being clipped.
+  //
+  // So the budget has to fund the bulge three times over, not once: below
+  // the book (folded into --scrub-gap, which also adds SCRUB_GAP_MIN of
+  // breathing room against the scrub bar) AND above it (the centred slack,
+  // which needs no extra minimum — there's no adjacent control up there to
+  // clear, just the header text). Dividing by (1 + 3k) is that closed form:
+  // pageH*(1+3k) + SCRUB_GAP_MIN + SCRUB_BAR_H lands exactly at availH, which
+  // leaves (H - blockHeight)/2 = k*pageH of slack on each side of the block —
+  // exactly the bulge, so it's self-consistent rather than an iterated guess.
+  const k = 0.5 / (PERSPECTIVE_RATIO - 1);
+  const bookAvailH = (availH - SCRUB_BAR_H - SCRUB_GAP_MIN) / (1 + 3 * k);
+  const book = fitTiles(availW, bookAvailH, BOOK_SPAN, 1, 0);
   setTileVars("--page-w", "--page-h", book);
   // Mirror what setTileVars actually wrote, so the book's maths and the CSS
   // agree to the pixel.
@@ -2372,6 +2430,12 @@ function layoutSurfaces() {
   document.documentElement.style.setProperty(
     "--perspective",
     `${Math.round(pageW * PERSPECTIVE_RATIO)}px`
+  );
+  // The clearance the turning page's bulge actually needs at the page size
+  // just computed — consumed by .refine-browse's gap.
+  document.documentElement.style.setProperty(
+    "--scrub-gap",
+    `${Math.round(k * pageH + SCRUB_GAP_MIN)}px`
   );
   setTileVars(
     "--edit-w",

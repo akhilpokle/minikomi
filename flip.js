@@ -12,8 +12,8 @@
    measured in it would be a lie.
 
    WHAT IS BORROWED (see NEEDS) — clamp, token, bury, readFlipTokens, depthAt,
-   slotAtDepth, applyScene. Between them that is the entire token pipeline and
-   the entire positioning model.
+   slotAtDepth, shiftAtScene, bookShift, applyScene. Between them that is the
+   entire token pipeline and the entire positioning model.
 
    WHAT THE LAB OWNS — placeholder page content (the app's buildPage draws photos
    and live cover inputs, neither of which belongs here), the transport, the
@@ -34,6 +34,8 @@ const NEEDS = [
   "readFlipTokens",
   "depthAt",
   "slotAtDepth",
+  "shiftAtScene",
+  "bookShift",
   "applyScene",
 ];
 
@@ -146,7 +148,7 @@ function linkGeometry(src, env) {
   const factory = new Function(
     "env",
     `"use strict";
-     const { leafEls, LEAF_COUNT, MAX_DEPTH, rootStyle, reducedMotion } = env;
+     const { leafEls, LEAF_COUNT, MAX_DEPTH, rootStyle, reducedMotion, bookEl } = env;
      const Z_TOP = 30;
      let pageW = 0, pageH = 0;
      let FAN_OUT_RATIO, FAN_SHRINK_RATIO, BOOK_TILT, LEAF_WEDGE, PERSPECTIVE_RATIO,
@@ -155,7 +157,8 @@ function linkGeometry(src, env) {
      ${bodies}
 
      return {
-       clamp, token, bury, readFlipTokens, depthAt, slotAtDepth, applyScene,
+       clamp, token, bury, readFlipTokens, depthAt, slotAtDepth, shiftAtScene,
+       bookShift, applyScene,
        setPageBox(w, h) { pageW = w; pageH = h; },
        values: () => ({
          FAN_OUT_RATIO, FAN_SHRINK_RATIO, BOOK_TILT, LEAF_WEDGE, PERSPECTIVE_RATIO,
@@ -299,6 +302,11 @@ function apply(t, instant) {
     void bookEl.offsetWidth; // land it before transitions come back
     bookEl.classList.remove("is-scrubbing");
   }
+  // .lab-spine is a sibling of #book, not a descendant, so it doesn't inherit
+  // the --book-shift applyScene() just wrote inline on #book — it has to be
+  // told directly, or the hairline stops marking the real spine the moment a
+  // lone Cover/page-7 recentres the book.
+  spineEl.style.left = `calc(50% + ${geo.bookShift(scene).toFixed(2)}px)`;
   sceneInput.value = String(scene);
   sceneOut.textContent = scene.toFixed(3);
   renderTable();
@@ -631,6 +639,7 @@ async function boot() {
       MAX_DEPTH,
       rootStyle,
       reducedMotion,
+      bookEl,
     });
   } catch (error) {
     fail(error);

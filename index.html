@@ -62,17 +62,16 @@
 
         <!--
           Scrub bar — navigation and position indicator in one control. Drag it
-          to flip spreads. Ticks and labels are rendered from SPREADS by
-          script.js, so they stay correct if the folding ever changes.
+          to flip spreads. Dots are rendered from SPREADS by script.js, so they
+          stay correct if the folding ever changes. No visible labels; position
+          is still announced via aria-valuetext.
         -->
         <div class="scrubber" id="scrubber">
           <div class="scrub-track" id="scrub-track" role="slider" tabindex="0"
                aria-label="Booklet position" aria-valuemin="0" aria-valuemax="4"
                aria-valuenow="0" aria-valuetext="Cover">
-            <div class="scrub-fill" id="scrub-fill"></div>
             <div class="scrub-thumb" id="scrub-thumb"></div>
           </div>
-          <div class="scrub-labels" id="scrub-labels"></div>
         </div>
       </div>
 
