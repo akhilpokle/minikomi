@@ -29,7 +29,7 @@
      proportions at any page size — resizing the book needs no re-tuning. */
   --flip-duration: 400ms;
   --flip-ease: cubic-bezier(0.645, 0.045, 0.355, 1);
-  --book-tilt: 5;        /* deg of open-book lean; unitless so JS can read it */
+  --book-tilt: 0;        /* deg of open-book lean; unitless so JS can read it */
   /* Half-angle of the V each leaf is folded into, in deg.
 
      0, AND IT SHOULD STAY 0 unless you have a reason. A leaf's two faces are the
@@ -54,7 +54,7 @@
      Non-uniform, deliberately. Only pages at pile depth 0 are ever read, and
      those are always exactly one page, undistorted. Depth 1+ shows nothing but a
      sliver of fore-edge, where a little stretch is invisible. */
-  --fan-out-ratio: 0.0125;     /* fore-edge extends, per pile step */
+  --fan-out-ratio: 0.01;       /* fore-edge extends, per pile step */
   --fan-shrink-ratio: 0.03125; /* height reduces, per pile step */
   /* Width of the gutter shade drawn onto the spine edge of a spread page, as a
      fraction of page width. Replaces the border there — see .page-content. */
@@ -81,7 +81,7 @@
   --gutter-bleed: 0px;
   /* Depth of the 3D projection, as a multiple of --page-w so the look is
      size-invariant. Lower = deeper, more dramatic foreshortening. */
-  --perspective-ratio: 3.5;
+  --perspective-ratio: 12;
   --perspective: 1400px;  /* computed by script.js from --perspective-ratio;
                              this value only covers the first paint */
 
