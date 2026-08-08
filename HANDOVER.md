@@ -192,6 +192,26 @@ quieter, and multi-line notices dwell 5s instead of 3.2s.
   The general trap: a tooltip on, or near the top edge of, anything carrying
   `.slot` must be positioned to land *within* the slot.
 
+- **Empty-slot hover + first-run hint, 2026-08-08.** Three small, unrelated
+  changes made together, before Phase 13 started:
+  - An empty slot's hover now carries the same `outline: 8px solid
+    var(--photo-frame)` frame a filled slot's hover already had — but
+    Arrange-only, matching why the filled version excludes Refine (§ above).
+    A centred "Upload image" label (`.slot-empty-label`) appears instantly on
+    hover/focus (no fade — explicitly asked for), except on the cover slot,
+    which already has its Title/Sub title inputs as its own affordance.
+  - The first-run hint's separate SVG arrow + `.hint-text` span became one
+    `<img src="assets/images/arrow.png">` — the supplied asset bakes both the
+    arrow and the "Drag or tap to add your pics!" copy into a single image,
+    so the two-element layout (and `.hint-text`'s CSS) is gone rather than
+    kept alongside it.
+  - `.grid-wrap`'s padding went from asymmetric (`0 40px`, horizontal only)
+    to a uniform value, landing at **24px** after a brief detour through
+    48px. `layoutSurfaces()` (script.js) now reads `paddingTop`/`paddingBottom`
+    into `availH` the same way it already read `paddingLeft`/`paddingRight`
+    into `availW` — previously only the horizontal padding was subtracted,
+    since there wasn't any vertical padding to account for.
+
 ## 11. Build process (MVP 1)
 Phased; Claude stops for review after each phase:
 
@@ -230,7 +250,14 @@ Phased; Claude stops for review after each phase:
 13. ✅ Integrated toolbar — the scrub bar moved out from under the book into
     the bottom control pill itself, collapsed to 0-width in Arrange and
     expanding only in Refine, to a supplied spec + two mockups. The 5 spread
-    stops changed from small dots to carved detents. See § Phase 13 notes.
+    stops changed from small dots to carved detents — **superseded, see §
+    Phase 13 addendum**: plain dots/lines, a supplied thumb SVG, a second
+    divider, and several rounds of sizing. See § Phase 13 notes.
+14. ✅ Detent friction — the scrub thumb resists at each mark instead of
+    tracking the pointer 1:1: a breakaway threshold holds it until the drag
+    pulls far enough, showing a few px of "give" first. Two earlier
+    approaches (a positional warp, a crossing-pulse flash) were tried and
+    removed — neither read as physical. See § Phase 14 notes.
 
 Deferred to MVP 2: iPad/mobile responsiveness + tap-to-select.
 Deferred out of phase 8: the pages' *curvature* (§ Phase 8 notes).
@@ -255,6 +282,15 @@ Deferred out of phase 8: the pages' *curvature* (§ Phase 8 notes).
 - [x] Paper spec — A4 (842×595pt) landscape, 196×245pt cells (4:5, no inset),
       300 DPI. Supplied via Figma 2026-08-01 (phase 10); supersedes the
       2026-07-30 5mm-inset spec (§7).
+- [x] `arrow.png` — hand-drawn arrow + "Drag or tap to add your pics!" baked
+      into one image, supplied 2026-08-08. Replaced the separate inline SVG
+      arrow + `.hint-text` span in the first-run hint (§6) — one `<img>` now
+      does both jobs, so `.hint-text` is gone as dead CSS.
+- [x] `slider.svg` — the scrub thumb's pill face (62×34 native: white shell,
+      two shaded "page" panels, orange centre bar), supplied 2026-08-08.
+      Replaced the hand-built gradient/border/`::before`+`::after` version
+      from Phase 12 — see § Phase 13 addendum. Stretched to the thumb's own
+      60×32 box (`background-size: 100% 100%`), not shown at native size.
 - [ ] Sample photos, mixed orientations (currently testing with generated images)
 
 Fonts not specified, so: Geist Mono for UI, Caveat for the italic display title
@@ -365,7 +401,128 @@ config in `.claude/launch.json`), then open http://localhost:5173.
 Add `#tune` to the URL for the flip tuner (§ Phase 8 notes).
 
 Phase 4 was reviewed and signed off by the user on 2026-07-29.
-Phases 5, 6a, 6b, 7, 8, 9, 10, 11, 12 and 13 are built and awaiting review.
+Phases 5, 6a, 6b, 7, 8, 9, 10, 11, 12, 13 and 14 are built and awaiting review.
+Phase 14's detent friction has only been checked with synthetic pointer
+events and direct function calls — see § Phase 14 notes' last bullet — a
+real mouse/touch drag hasn't been tried by Claude and is the one thing worth
+checking first.
+
+### Phase 14 notes — detent friction
+Built after two rounds of brainstorming with the user and two rejected
+approaches — worth knowing both, so they aren't re-tried.
+
+- **Rejected #1: a positional warp.** `sceneFromPointer`'s output was warped
+  with a smoothstep so it lingered near each detent (`--detent-pull`, since
+  removed). Mathematically correct — monotonic, continuous, velocity dipped
+  at each mark — but it changed WHERE the thumb landed relative to the
+  pointer without anything resisting the pointer itself. Read as lag, not
+  friction, because a physical detent is a force you feel through your hand;
+  a position-only warp has no channel to convey that on a screen.
+- **Rejected #2: a crossing pulse.** A WAAPI scale + colour-flash on each
+  tick mark (`pulseMark()`) crossed during a drag. Structurally dead on
+  arrival: the thumb is 60px wide and detents are ~9px apart, so it covers
+  roughly 7 marks at once — almost every pulse fired on a mark already
+  hidden underneath it. Removed once the breakaway mechanism (below) made it
+  redundant even for the few marks it could reach.
+- **What shipped: a breakaway threshold.** The thumb's *committed* position
+  (what drives `left` and `applyScene`) doesn't move until the raw pointer
+  has pulled `--detent-breakaway` (0.65) of a detent's span past it — at
+  which point it releases to `Math.round()` of the pointer's position, not
+  just one step over, so a fast flick commits several detents at once
+  correctly rather than walking through them. Below that threshold,
+  `--scrub-strain` — a `transform: translateX()` on `.scrub-thumb`, layered
+  on top of and independent from `left` — shows up to `--detent-strain-max`
+  (2px) of visible "give" toward the pointer, scaled to reach exactly that
+  max right at the threshold. This is what rejected approach #1 was missing:
+  the committed position and the visible pointer-following are now two
+  different things, so there's something to visibly resist *before* it lets
+  go.
+- **The page had to stop being either fully continuous or fully snapped.**
+  Quantizing `t` to one detent at a time (1/7 of a spread — `SCENE_PER_DETENT`)
+  and feeding it straight to `applyScene()` would judder badly at `.book`'s
+  old `is-scrubbing` behaviour (`transition: none`, built for the previous
+  continuous-pointer model). Fixed by giving `.book`/`.leaf`/`.page-content`
+  a short transition instead of none while scrubbing (`--detent-drag-duration`,
+  130ms) — CSS transitions retarget mid-flight (already relied on since phase
+  7), so this is genuinely emergent, not two code paths: a fast drag's
+  commits arrive faster than 130ms and blend into one continuous turn; a slow
+  drag's commits arrive slower and each one visibly lands before the next,
+  reading as individual clicks. Same mechanism, different feel, purely from
+  drag speed.
+- **Three transition speeds on one element, not one.** `.scrub-thumb` now
+  distinguishes: `transform` (the strain) always transitions fast and linear
+  (`--detent-strain-duration`, 60ms) regardless of drag state, since it's
+  never a committed move; `left` transitions fast with a slight overshoot
+  while actively dragging (`--detent-snap-duration`, 70ms, reusing
+  `--detent-ease`) for in-drag commits; `left` transitions slower with the
+  same overshoot (`--detent-duration`, 260ms) for the final release-to-spread
+  settle. Getting the live-drag override wrong here is an easy trap:
+  `transition` is a shorthand, so `.scrub-track.is-scrubbing .scrub-thumb`
+  has to restate BOTH properties, not just `left` — omitting `transform`
+  there doesn't inherit the base rule's transform transition, it silently
+  drops it, making strain jump instead of ease during a drag.
+  `prefers-reduced-motion` needed the equivalent trap avoided in the other
+  direction: `.book.is-scrubbing` etc.'s reduced-motion override has to
+  repeat the same compound selectors (not just the bare `.book`/`.leaf`),
+  or the higher-specificity `.is-scrubbing` rule wins over the media query
+  regardless of source order and reduced-motion users still get motion.
+- **`scrubDrag()` no longer trusts `sceneFromPointer()`'s output directly.**
+  It's still the raw linear pointer-to-scene mapping (unwarped, per rejected
+  approach #1), but `scrubDrag` now treats it as an intermediate value: convert
+  to detent units, compare against the committed index, breakaway-or-strain,
+  then convert the (possibly still-uncommitted) result back to a scene value
+  for `applyScene`/`syncScrubber`. `state.spread` still updates every call
+  (nearest whole spread), unchanged from before.
+- **Verification gap.** Synthetic `PointerEvent`s dispatched for testing
+  don't carry a real OS-level pointer, so `element.setPointerCapture()`
+  throws `NotFoundError` inside the `pointerdown` handler — a test-only
+  artifact (real mouse/touch input has a valid pointer), but it means the
+  full pointerdown → pointermove → pointerup path was only verified by
+  calling `scrubDrag()`/toggling `.is-scrubbing` directly, not through actual
+  simulated pointer events. The math and the CSS were both confirmed correct
+  this way, but nobody has dragged the real control yet.
+
+### Phase 13 addendum — scrub bar settled, thumb replaced
+Several rounds of adjustment after Phase 13 shipped, before Phase 14 started.
+Grouped here rather than as their own phases since each was a refinement of
+what Phase 13 already built, not a new capability.
+
+- **Two-tier marks landed on plain, not carved.** Phase 13's own notes
+  describe 5 "carved detent" stops (a dark+light `box-shadow` groove). Gone —
+  the user asked for the original 36-ish-mark ground-texture spec back, which
+  went through a few sizes before settling: **29 total marks** (24 minor dots,
+  2×6px, `#d9d9d9`, `border-radius: 8px`; 5 stops, 2×20px, same colour/radius)
+  with `SCRUB_MARK_COUNT = 29` chosen specifically because `(29 - 1) / 4 = 7`
+  is an integer — every 7th grid position lands exactly on a real stop and is
+  skipped in the minor loop, so the two tiers share one position grid instead
+  of drifting past each other (`SCRUB_STOP_STRIDE` in script.js).
+- **Marks and the thumb align because they share one formula.** Both tiers'
+  `left` reserves `--scrub-thumb-w`, the same formula `.scrub-thumb` itself
+  uses — a tick at fraction 0 or 1 lands on the thumb's CENTRE at that same
+  park position, not the track's raw edges. Necessary once the user asked for
+  "the first line to align with the scrub button": the two were on different
+  formulas before (ticks spanned the full inner width; the thumb reserved its
+  own width), which is exactly why they didn't line up.
+- **The scrub container's padding round-tripped 8px → 4px** (`--scrub-pad-x`),
+  ending back where `--scrub-pad` (vertical) already was — now genuinely
+  equal, though kept as two separate tokens since they've diverged before and
+  likely will again.
+- **The thumb is a supplied SVG now, not CSS.** `slider.svg` (62×34: shell,
+  two shaded panels, orange centre bar all baked in) replaces the Phase 12
+  radial-gradient + border + `::before`/`::after` rectangle version outright —
+  `.scrub-thumb::before`/`::after` are deleted, not just unused. Stretched via
+  `background-size: 100% 100%` to the thumb's own 60×32 box (grown from
+  Phase 12's 52×32) rather than shown at native size — a ~3% non-uniform
+  squeeze, invisible on a rounded pill.
+- **A second `.toolbar-sep` was added** after the scrubber, collapsing with
+  it (0-width in Arrange) via the same `.mode-toggle[data-mode="refine"] ~`
+  pattern the scrubber itself uses — so PRINT IT gets a divider on both
+  sides of the scrub bar in Refine, and neither divider doubles up against
+  the other when the scrubber is collapsed in Arrange.
+- **PRINT IT's `border-radius` 12px → 8px, `font-size` 16px → 14px** — plain
+  value tweaks, no structural change. `.print-btn--modal` (the fold-guide's
+  download button) already overrides its own sizing in full, so neither
+  touched it.
 
 ### Phase 13 notes — integrated toolbar
 Built to a supplied measurement spec plus two mockups (page mode, book mode).

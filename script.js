@@ -773,6 +773,8 @@ let BOOK_SPAN; // total width to reserve, in page widths
 let ROT_RIGHT; // rest angle, right side
 let ROT_FLIPPED; // rest angle, turned onto the left
 let FLIP_MS; // tracks --flip-duration; drives the settle timer in liftRange
+let DETENT_BREAKAWAY; // 0..1, fraction of a detent's span before the thumb releases
+let DETENT_STRAIN_MAX; // px, visible "give" at the breakaway threshold
 
 /**
  * BOOK_SPAN — how wide the deck is, in page widths. A receding page stays pinned
@@ -807,6 +809,8 @@ function readFlipTokens() {
   ROT_RIGHT = -(BOOK_TILT + LEAF_WEDGE);
   ROT_FLIPPED = -(180 - BOOK_TILT - LEAF_WEDGE);
   FLIP_MS = reducedMotion ? 0 : token("--flip-duration", 400);
+  DETENT_BREAKAWAY = token("--detent-breakaway", 0.65);
+  DETENT_STRAIN_MAX = token("--detent-strain-max", 2);
 }
 
 readFlipTokens();
@@ -1351,6 +1355,9 @@ function spreadAria(index) {
 // evenly by LAST_SPREAD; keep them in step if either ever changes.
 const SCRUB_MARK_COUNT = 29;
 const SCRUB_STOP_STRIDE = (SCRUB_MARK_COUNT - 1) / LAST_SPREAD;
+// One detent per grid position — the unit scrubDrag() (below) measures the
+// breakaway threshold in.
+const SCENE_PER_DETENT = LAST_SPREAD / (SCRUB_MARK_COUNT - 1);
 
 function buildScrubber() {
   scrubTrack.setAttribute("aria-valuemax", String(LAST_SPREAD));
@@ -1397,11 +1404,13 @@ function syncScrubber(pos = state.spread) {
   scrubTrack.setAttribute("aria-valuetext", spreadAria(nearest));
 }
 
-let scrubbing = null; // { id } while a drag is in flight
+let scrubbing = null; // { id, committedIndex } while a drag is in flight
 
 /**
- * Pointer x → a continuous scene, 0 .. LAST_SPREAD. Deliberately not snapped:
- * the fractional part is what turns the page under the pointer.
+ * Pointer x → a continuous scene, 0 .. LAST_SPREAD. Deliberately not snapped
+ * here — scrubDrag() below is what quantizes it, so this function alone
+ * still reflects the raw pointer, which is what the breakaway threshold
+ * needs to measure against.
  *
  * Maps against the thumb's actual travel range, not the full track: the
  * thumb is a wide block now, not a point, so a pointer at the track's right
@@ -1418,23 +1427,62 @@ function sceneFromPointer(clientX) {
   return clamp(x / SCRUB_TRAVEL_PX, 0, 1) * LAST_SPREAD;
 }
 
+/**
+ * Breakaway detent: the committed position (and so the page and the thumb's
+ * `left`) doesn't move until the raw pointer has pulled DETENT_BREAKAWAY of
+ * a detent's span past it, at which point it releases to the nearest detent
+ * to the pointer — not just one step, so a fast flick can commit several at
+ * once. Below that threshold, --scrub-strain (styles.css) shows the pull as
+ * a few px of "give" on the thumb without moving its committed `left` at
+ * all — a positional warp on the committed value (tried, reverted) read as
+ * lag; this reads as resistance because the two are now visibly decoupled.
+ */
 function scrubDrag(clientX) {
-  const t = sceneFromPointer(clientX);
+  if (!scrubbing) return;
+  const u = sceneFromPointer(clientX) / SCENE_PER_DETENT; // raw pointer, in detent units
+  let offset = u - scrubbing.committedIndex;
+
+  if (Math.abs(offset) > DETENT_BREAKAWAY) {
+    const next = clamp(Math.round(u), 0, SCRUB_MARK_COUNT - 1);
+    if (next !== scrubbing.committedIndex) {
+      scrubbing.committedIndex = next;
+      offset = u - next;
+    }
+  }
+
+  const t = scrubbing.committedIndex * SCENE_PER_DETENT;
   // The nearest stop is the committed spread, so releasing — or any other
   // navigation path — resumes from somewhere real.
   state.spread = Math.round(t);
   applyScene(t);
   syncScrubber(t);
+
+  // Scaled so strain reaches exactly DETENT_STRAIN_MAX right at the
+  // breakaway threshold, then resets once a commit fires above.
+  const strainPx = clamp(
+    (offset / DETENT_BREAKAWAY) * DETENT_STRAIN_MAX,
+    -DETENT_STRAIN_MAX,
+    DETENT_STRAIN_MAX
+  );
+  scrubThumb.style.setProperty("--scrub-strain", `${strainPx}px`);
 }
 
 scrubTrack.addEventListener("pointerdown", (e) => {
   if (e.button !== 0) return;
   e.preventDefault(); // suppress text selection during the drag
-  scrubbing = { id: e.pointerId };
+  const startIdx = clamp(
+    Math.round(sceneFromPointer(e.clientX) / SCENE_PER_DETENT),
+    0,
+    SCRUB_MARK_COUNT - 1
+  );
+  scrubbing = { id: e.pointerId, committedIndex: startIdx };
+  scrubThumb.style.setProperty("--scrub-strain", "0px");
   scrubTrack.setPointerCapture(e.pointerId);
   scrubTrack.classList.add("is-scrubbing");
-  // Transitions off, or the page eases along behind the pointer instead of
-  // tracking it.
+  // Short transitions (styles.css), not none — quantized commits need to
+  // actually move the page, and a brief transition is what makes a fast
+  // drag's frequent commits blend into one turn while a slow drag's rarer
+  // ones read as individual clicks.
   bookEl.classList.add("is-scrubbing");
   // So the keyboard can take over where the drag left off.
   scrubTrack.focus();
@@ -1454,6 +1502,7 @@ function endScrub(e) {
   scrubbing = null;
   scrubTrack.classList.remove("is-scrubbing");
   bookEl.classList.remove("is-scrubbing");
+  scrubThumb.style.setProperty("--scrub-strain", "0px");
   // Commit the transitions-enabled state before the new values land, or the
   // browser can coalesce both changes and skip the animation home.
   void bookEl.offsetWidth;
@@ -2519,6 +2568,10 @@ const TUNER_KNOBS = [
   { name: "--perspective-ratio", label: "perspective", min: 1.5, max: 12, step: 0.1, unit: "", show: "×" },
   { name: "--edge-thickness", label: "paper edge", min: 0, max: 12, step: 0.5, unit: "px" },
   { name: "--gutter-bleed", label: "gutter bleed", min: 0, max: 24, step: 1, unit: "px" },
+  { name: "--detent-breakaway", label: "detent breakaway", min: 0.3, max: 0.9, step: 0.05, unit: "" },
+  { name: "--detent-strain-max", label: "detent strain", min: 0, max: 6, step: 0.5, unit: "px" },
+  { name: "--detent-drag-duration", label: "page drag speed", min: 40, max: 300, step: 10, unit: "ms" },
+  { name: "--detent-snap-duration", label: "thumb snap speed", min: 20, max: 200, step: 10, unit: "ms" },
 ];
 
 const TUNER_COLORS = [
@@ -2552,6 +2605,10 @@ const TUNER_EXPORT = [
   "--gutter-curl",
   "--gutter-bleed",
   "--perspective-ratio",
+  "--detent-breakaway",
+  "--detent-strain-max",
+  "--detent-drag-duration",
+  "--detent-snap-duration",
 ];
 
 function tunerRead(name) {

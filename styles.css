@@ -117,6 +117,34 @@
   --scrub-pad-x: 4px;
   --scrub-inner: calc(var(--scrub-w) - var(--scrub-border-w) * 2);
   --scrub-thumb-w: 60px;
+  /* The thumb's release snap — separate from --flip-duration/ease (the page
+     turn's own timing) so the "detent" feel can be tuned without touching
+     how the book turns. Shorter and springier than the page: an overshoot
+     curve (the thumb runs slightly past its target, then settles back) is
+     what reads as a mechanical catch, vs. the page's plain in-out ease. */
+  --detent-duration: 260ms;
+  --detent-ease: cubic-bezier(0.34, 1.4, 0.64, 1);
+  /* Breakaway detent (script.js's scrubDrag): the thumb's committed `left`
+     doesn't move until the raw pointer has pulled this fraction of a
+     detent's span past it — below that, --detent-strain-max is the most px
+     of visible "give" shown instead, via --scrub-strain (a transform on
+     .scrub-thumb, not a change to `left`), scaled to hit exactly this max
+     right at the threshold. */
+  --detent-breakaway: 0.65;
+  --detent-strain-max: 2px;
+  /* Thumb's `left` transition WHILE actively dragging (.scrub-track's
+     is-scrubbing) — a fast in-drag commit, distinct from --detent-duration
+     above, which is the longer release-to-final-spread settle. */
+  --detent-snap-duration: 70ms;
+  /* .scrub-thumb's `transform` (--scrub-strain) transition — always on,
+     regardless of is-scrubbing, since strain is never a committed move. Fast
+     enough to feel like direct pointer-following, not an eased animation. */
+  --detent-strain-duration: 60ms;
+  /* .book/.leaf/.page-content's transition duration while dragging — short
+     enough that a fast drag's frequent commits blend into one continuous
+     turn, long enough that a slow drag's rarer ones read as individual
+     clicks from mark to mark. */
+  --detent-drag-duration: 130ms;
 }
 
 * { box-sizing: border-box; }
@@ -728,18 +756,31 @@ html, body {
   transition: none;
 }
 
-/* While the scrub bar is being dragged the page — and the spine's shift —
-   have to track the pointer instead of easing behind it. */
+/* While the scrub bar is being dragged, scrubDrag() (script.js) only ever
+   writes a QUANTIZED t (one detent at a time, not continuous) — so unlike
+   is-instant above, this shortens the existing transition rather than
+   killing it: --detent-drag-duration is what turns a string of discrete
+   commits into a turn that blends smooth at a fast drag speed and clicks
+   step by step at a slow one. Longhand overrides only (not the shorthand),
+   so each element keeps its own base rule's transition-property list. */
 .book.is-scrubbing,
 .book.is-scrubbing .leaf,
 .book.is-scrubbing .page-content {
-  transition: none;
+  transition-duration: var(--detent-drag-duration);
+  transition-timing-function: var(--flip-ease);
 }
 
 @media (prefers-reduced-motion: reduce) {
   .book,
   .leaf,
-  .page-content {
+  .page-content,
+  .scrub-thumb,
+  /* Matching specificity to the .is-scrubbing overrides above/below, or
+     those would win over this despite coming first in the cascade. */
+  .book.is-scrubbing,
+  .book.is-scrubbing .leaf,
+  .book.is-scrubbing .page-content,
+  .scrub-track.is-scrubbing .scrub-thumb {
     transition: none;
   }
 }
@@ -792,6 +833,17 @@ body.is-morphing .refine {
   cursor: grabbing;
 }
 
+/* Live-drag override for .scrub-thumb's `left` transition (below, in the
+   thumb's own rule): a fast snap for in-drag commits rather than the long
+   release settle. `transform` is repeated unchanged (--detent-strain-duration,
+   same as the base rule) — transition is a shorthand, so leaving it out here
+   would drop the strain's own transition entirely rather than inherit it. */
+.scrub-track.is-scrubbing .scrub-thumb {
+  transition:
+    left var(--detent-snap-duration) var(--detent-ease),
+    transform var(--detent-strain-duration) linear;
+}
+
 /* Absolutely-positioned children (thumb, ticks) are placed against this
    element's PADDING box, which the browser already excludes the border from —
    so --scrub-pad/--scrub-pad-x below are the only inset either of them needs
@@ -840,42 +892,30 @@ body.is-morphing .refine {
   );
   width: var(--scrub-thumb-w);
   height: calc(var(--scrub-h) - var(--scrub-border-w) * 2 - var(--scrub-pad) * 2);
-  border-radius: 6px;
-  background: radial-gradient(42.95% 55% at 50.96% 50%, #ff673e 0%, #ff3d00 100%);
-  border: 1px solid #da1d00;
-  /* Centres the two "page" rectangles below with a 2px gap — see their
-     comment for why this needs no extra sizing to make them fit exactly. */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
+  /* Supplied asset — the pill shell, its two shaded "page" panels and the
+     orange centre bar are all baked into the SVG (62x34 native), so it's
+     stretched to fill the JS-positioned box rather than laid out from CSS
+     primitives like the hand-drawn version this replaced. */
+  background: url("assets/images/slider.svg") no-repeat center / 100% 100%;
   /* Ticks are appended after it in DOM order (buildScrubber) and would
      otherwise paint the parked stop's dot on top of it. */
   z-index: 2;
-}
-
-/* Two rectangles echoing the booklet's two pages, each shaded toward the
-   spine (the gap between them) with an inner shadow. border-box means the
-   thumb's own 1px stroke already eats into its box: content area lands at
-   exactly 50x16 (52x18 minus 1px each side), which is exactly 24 + 2 + 24
-   wide and 16 tall — the rects fill it edge to edge with zero slack, not by
-   coincidence. flex-shrink:0 keeps them from being squeezed under any
-   sub-pixel rounding of --scrub-thumb-w / --scrub-h. */
-.scrub-thumb::before,
-.scrub-thumb::after {
-  content: "";
-  width: 24px;
-  height: 16px;
-  border-radius: 4px;
-  flex-shrink: 0;
-}
-
-.scrub-thumb::before {
-  box-shadow: inset -1px 1px 1px rgba(0, 0, 0, 0.1);
-}
-
-.scrub-thumb::after {
-  box-shadow: inset 1px 1px 1px rgba(0, 0, 0, 0.1);
+  /* --scrub-strain (script.js's scrubDrag) is the sub-threshold "give" — a
+     few px of pull toward the pointer before a detent releases — layered on
+     top of `left`'s own committed position via transform rather than folded
+     into the position formula, so strain never has to know about ticks or
+     travel bounds, just its own small range. */
+  transform: translateX(var(--scrub-strain, 0px));
+  /* `left`: none during a live drag (below) so committed jumps snap fast;
+     on here so a release eases the thumb home with its own spring/overshoot
+     — see --detent-duration/ease (:root) — rather than the page's plain
+     in-out curve. See endScrub()'s reflow in script.js, which is what
+     commits this before applyScene()/syncScrubber() write the target.
+     `transform`: always this same fast, ungated duration — strain is never
+     a committed move, so it isn't part of the is-scrubbing distinction. */
+  transition:
+    left var(--detent-duration) var(--detent-ease),
+    transform var(--detent-strain-duration) linear;
 }
 
 /* ==========================================================================
@@ -1082,7 +1122,8 @@ body.is-morphing .refine {
 @media (prefers-reduced-motion: reduce) {
   .mode-toggle-thumb,
   .mode-toggle-ink,
-  .scrubber {
+  .scrubber,
+  .toolbar-sep--after {
     transition: none;
   }
 }
@@ -1093,6 +1134,23 @@ body.is-morphing .refine {
   background: #dcdcdc;
   margin-right: 12px;
   flex-shrink: 0;
+}
+
+/* The one after the scrubber collapses with it (0-width in Arrange) — a
+   static divider there would sit flush against the first one with nothing
+   between them while the scrubber is collapsed. */
+.toolbar-sep--after {
+  width: 0;
+  margin-right: 0;
+  overflow: hidden;
+  transition:
+    width var(--morph-duration) var(--morph-ease),
+    margin-right var(--morph-duration) var(--morph-ease);
+}
+
+.mode-toggle[data-mode="refine"] ~ .toolbar-sep--after {
+  width: 1px;
+  margin-right: 12px;
 }
 
 /* Collapsed to 0-width in Arrange, expands to --scrub-w only in Refine — a
@@ -1121,12 +1179,12 @@ body.is-morphing .refine {
   justify-content: center;
   font-family: var(--mono);
   font-weight: 700;
-  font-size: 16px;
+  font-size: 14px;
   letter-spacing: 0.03em;
   color: var(--white);
   background: #ff3d00;
   border: 2px solid #da1d00;
-  border-radius: 12px;
+  border-radius: 8px;
   height: 38px;
   padding: 7px 8px;
   box-shadow:
