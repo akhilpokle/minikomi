@@ -101,19 +101,22 @@
      --scrub-w is the outer (border-box) width; an absolutely-positioned
      child's containing block is the PADDING box, which the browser already
      excludes the border from, so --scrub-inner (border subtracted) is what
-     the travel maths below is built on, not --scrub-w directly.
-     --scrub-thumb-w is a literal 52px, not derived — at 5 stops the exact
-     tiling width would be 1/5 of the inner track (~54.8px, no gap or overlap
-     between resting positions); 52px leaves a small gap either side of a
-     parked thumb instead. script.js reads this same token via token(), so
-     the pointer-drag maths (sceneFromPointer) can't disagree with it. */
-  --scrub-w: 280px;
-  --scrub-h: 24px;
-  --scrub-border-w: 1px;
-  --scrub-pad: 2px;
+     the travel maths below is built on, not --scrub-w directly. No border as
+     of phase 13 (--scrub-border-w: 0), but the token stays so the maths below
+     doesn't need a special case.
+     --scrub-thumb-w is a literal 60px, not derived. script.js reads this
+     same token via token(), so the pointer-drag maths (sceneFromPointer)
+     can't disagree with it.
+     --scrub-pad is vertical (thumb's top inset); --scrub-pad-x is horizontal
+     (thumb/tick left insets) — split into two tokens since the two axes have
+     drifted apart before, even though both are 4px again right now. */
+  --scrub-w: 320px;
+  --scrub-h: 40px;
+  --scrub-border-w: 0px;
+  --scrub-pad: 4px;
+  --scrub-pad-x: 4px;
   --scrub-inner: calc(var(--scrub-w) - var(--scrub-border-w) * 2);
-  --scrub-thumb-w: 52px;
-  --scrub-gap: 18px; /* clearance to the spread; recomputed by layoutSurfaces() */
+  --scrub-thumb-w: 60px;
 }
 
 * { box-sizing: border-box; }
@@ -192,16 +195,8 @@ html, body {
 }
 
 .hint-arrow {
-  transform: translateY(6px);
-}
-
-.hint-text {
-  font-family: var(--display);
-  font-style: italic;
-  font-size: 20px;
-  line-height: 1.15;
-  color: var(--muted-light);
-  white-space: nowrap;
+  width: 150px;
+  height: auto;
 }
 
 /* ==========================================================================
@@ -214,7 +209,7 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 40px;
+  padding: 24px;
 }
 
 /* Arrange and Refine are both absolutely positioned within .grid-wrap (rather
@@ -248,6 +243,9 @@ html, body {
   height: 100%;
   width: 100%;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   transition: background 0.15s ease;
 }
 
@@ -259,6 +257,26 @@ html, body {
 
 .slot-empty:focus-visible {
   box-shadow: inset 0 0 0 2px var(--orange);
+}
+
+/* Hidden until hover/focus, shown instantly (no fade) unlike .slot-toolbar. */
+.slot-empty-label {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--muted-light);
+  text-align: center;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.slot-empty:hover .slot-empty-label,
+.slot-empty:focus-visible .slot-empty-label {
+  opacity: 1;
+}
+
+/* Cover already carries Title/Sub title inputs as its own affordance. */
+.slot-cover .slot-empty-label {
+  display: none;
 }
 
 /* filled slot */
@@ -378,6 +396,14 @@ html, body {
   outline: 8px solid var(--photo-frame);
 }
 
+/* Same frame treatment on an empty slot's hover, Arrange only (see above for
+   why Refine is excluded). No toolbar to reveal, so the "Upload image" label
+   (.slot-empty-label) stands in for it instead. */
+.grid .slot:not(.slot--filled):hover {
+  border-radius: 8px;
+  outline: 8px solid var(--photo-frame);
+}
+
 /* Flat icons on the panel now that .slot-toolbar itself carries the
    background — an own circle/border/shadow per button would double it up. */
 .slot-toolbar button {
@@ -489,15 +515,12 @@ html, body {
   justify-content: center;
 }
 
-/* The spread sits above its scrub bar. Gap is not a fixed value: a turning
-   leaf bulges past its own box under perspective (edge-on, magnified toward
-   the viewer), so --scrub-gap is computed per layout in layoutSurfaces() —
-   just the clearance floor here as a pre-JS fallback. */
+/* Phase 13: the scrub bar moved into the bottom toolbar, so this now just
+   centres the book — no sibling to gap against any more. */
 .refine-browse {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: var(--scrub-gap, 18px);
+  justify-content: center;
 }
 
 /* ==========================================================================
@@ -744,27 +767,25 @@ body.is-morphing .refine {
    .scrub-thumb's left and each .scrub-tick's centre both read the same
    --scrub-thumb-w, so they can't drift apart even though it's a literal, not
    a derived, value. script.js only ever writes a unitless fraction
-   (--scrub-pos / --tick-pos, 0..1) — every dimension is owned by CSS. */
-.scrubber {
-  display: flex;
-  justify-content: center;
-}
+   (--scrub-pos / --tick-pos, 0..1) — every dimension is owned by CSS.
 
+   Phase 13: lives in the bottom toolbar now, not under the book. It's a
+   flex item there that's 0-width at rest and expands to --scrub-w only in
+   Refine mode — see .toolbar-sep + .scrubber below "Bottom controls". */
 .scrub-track {
   position: relative;
   width: var(--scrub-w);
   height: var(--scrub-h);
-  background: var(--white);
-  border: var(--scrub-border-w) solid #f2f2f2;
+  background: #f2f2f2;
   border-radius: 8px;
-  box-shadow: 0 0 2px rgba(0, 0, 0, 0.1);
+  box-shadow: inset 0 0 3px rgba(0, 0, 0, 0.2);
   cursor: pointer;
   touch-action: none; /* stop the browser claiming the drag as a scroll */
 }
 
 .scrub-track:focus-visible {
   outline: none;
-  box-shadow: 0 0 2px rgba(0, 0, 0, 0.1), 0 0 0 2px var(--orange);
+  box-shadow: inset 0 0 3px rgba(0, 0, 0, 0.2), 0 0 0 2px var(--orange);
 }
 
 .scrub-track.is-scrubbing {
@@ -773,29 +794,49 @@ body.is-morphing .refine {
 
 /* Absolutely-positioned children (thumb, ticks) are placed against this
    element's PADDING box, which the browser already excludes the border from —
-   so --scrub-pad below is the only inset either of them needs to add; the
-   border is accounted for once, in --scrub-inner (:root). */
+   so --scrub-pad/--scrub-pad-x below are the only inset either of them needs
+   to add; the border is accounted for once, in --scrub-inner (:root).
+
+   Two tiers, both built by buildScrubber(): 37 evenly-spaced grid positions
+   as ground texture (minus the 5 that fall on a real stop, skipped there in
+   favour of the taller mark below), plus a taller .scrub-tick--stop at each
+   of the 5 real SPREADS positions (where a page actually sits flat, never
+   mid-turn) to break the dots into groups. Both share this one left formula
+   — same as
+   .scrub-thumb's own below, reserving --scrub-thumb-w so a tick-pos of 0/1
+   lands exactly where the thumb's LEFT EDGE parks at that same fraction,
+   not at the track's raw edges. That's what makes a stop mark align with
+   the thumb when it's parked there, and — since minor and stop marks share
+   this identical mapping — is also what keeps the stride-skipped minor dot
+   and its stop coinciding (see SCRUB_STOP_STRIDE in script.js). */
 .scrub-tick {
   position: absolute;
   top: 50%;
-  width: 4px;
-  height: 4px;
-  margin: -2px 0 0 -2px;
-  border-radius: 50%;
-  background: var(--muted-light);
-  /* Centred on the same stop the thumb parks on — see .scrub-thumb's left. */
+  width: 2px;
+  height: 6px;
+  margin: -3px 0 0 -1px;
+  border-radius: 8px;
+  background: #d9d9d9;
   left: calc(
-    var(--scrub-pad) + var(--scrub-thumb-w) / 2 + var(--tick-pos, 0) *
-      (var(--scrub-inner) - var(--scrub-pad) * 2 - var(--scrub-thumb-w))
+    var(--scrub-pad-x) + var(--scrub-thumb-w) / 2 + var(--tick-pos, 0) *
+      (var(--scrub-inner) - var(--scrub-pad-x) * 2 - var(--scrub-thumb-w))
   );
+}
+
+/* The 5 real stops — same width/colour/left-formula as .scrub-tick, just
+   taller, so 8px border-radius rounds only the short ends into a capsule
+   instead of a circle. */
+.scrub-tick--stop {
+  height: 20px;
+  margin-top: -10px;
 }
 
 .scrub-thumb {
   position: absolute;
   top: var(--scrub-pad);
   left: calc(
-    var(--scrub-pad) + var(--scrub-pos, 0) *
-      (var(--scrub-inner) - var(--scrub-pad) * 2 - var(--scrub-thumb-w))
+    var(--scrub-pad-x) + var(--scrub-pos, 0) *
+      (var(--scrub-inner) - var(--scrub-pad-x) * 2 - var(--scrub-thumb-w))
   );
   width: var(--scrub-thumb-w);
   height: calc(var(--scrub-h) - var(--scrub-border-w) * 2 - var(--scrub-pad) * 2);
@@ -825,6 +866,7 @@ body.is-morphing .refine {
   content: "";
   width: 24px;
   height: 16px;
+  border-radius: 4px;
   flex-shrink: 0;
 }
 
@@ -917,17 +959,26 @@ body.is-morphing .refine {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 16px;
   padding: clamp(16px, 3vh, 44px) 0 clamp(16px, 3vh, 44px);
 }
 
-/* Level 1: shell. */
-.mode-toggle {
+/* One integrated pill — the toggle, the scrub bar and PRINT IT all share this
+   shell now (phase 13), rather than the toggle carrying its own white
+   background/shadow as a separate pill next to the button. */
+.toolbar {
   display: flex;
+  align-items: center;
   background: var(--white);
   border-radius: 12px;
-  padding: 4px;
+  padding: 4px 6px 4px 4px;
   box-shadow: 0 0 6px rgba(0, 0, 0, 0.25);
+}
+
+/* Level 1: shell — was the toggle's own white/shadow pill; now just a flex
+   wrapper, since .toolbar (above) is the shell for the whole control. */
+.mode-toggle {
+  display: flex;
+  margin-right: 12px;
 }
 
 /* Level 2: track — one continuous strip both cells sit in, so the level-3
@@ -1030,21 +1081,54 @@ body.is-morphing .refine {
 
 @media (prefers-reduced-motion: reduce) {
   .mode-toggle-thumb,
-  .mode-toggle-ink {
+  .mode-toggle-ink,
+  .scrubber {
     transition: none;
   }
 }
 
+.toolbar-sep {
+  width: 1px;
+  height: 24px;
+  background: #dcdcdc;
+  margin-right: 12px;
+  flex-shrink: 0;
+}
+
+/* Collapsed to 0-width in Arrange, expands to --scrub-w only in Refine — a
+   sibling of .mode-toggle inside .toolbar, so this reads off the same
+   data-mode write setMode() already does (no separate state to keep in
+   sync). Width AND margin both animate, or a 0-width scrubber would still
+   hold its own gap open next to PRINT IT. */
+.scrubber {
+  width: 0;
+  margin-right: 0;
+  overflow: hidden;
+  flex-shrink: 0;
+  transition:
+    width var(--morph-duration) var(--morph-ease),
+    margin-right var(--morph-duration) var(--morph-ease);
+}
+
+.mode-toggle[data-mode="refine"] ~ .scrubber {
+  width: var(--scrub-w);
+  margin-right: 12px;
+}
+
 .print-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-family: var(--mono);
   font-weight: 700;
-  font-size: 14px;
+  font-size: 16px;
   letter-spacing: 0.03em;
   color: var(--white);
   background: #ff3d00;
   border: 2px solid #da1d00;
   border-radius: 12px;
-  padding: 12px 16px;
+  height: 38px;
+  padding: 7px 8px;
   box-shadow:
     inset 0 -5px 3px 0 rgba(0, 0, 0, 0.11),
     inset 0 4px 0 0 #ff673e;

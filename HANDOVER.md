@@ -227,6 +227,10 @@ Phased; Claude stops for review after each phase:
     bar. Also fixed a real clearance bug the old bar had: the turning page's
     perspective bulge could exceed the fixed 18px gap above it. See § Phase
     12 notes.
+13. ✅ Integrated toolbar — the scrub bar moved out from under the book into
+    the bottom control pill itself, collapsed to 0-width in Arrange and
+    expanding only in Refine, to a supplied spec + two mockups. The 5 spread
+    stops changed from small dots to carved detents. See § Phase 13 notes.
 
 Deferred to MVP 2: iPad/mobile responsiveness + tap-to-select.
 Deferred out of phase 8: the pages' *curvature* (§ Phase 8 notes).
@@ -361,7 +365,74 @@ config in `.claude/launch.json`), then open http://localhost:5173.
 Add `#tune` to the URL for the flip tuner (§ Phase 8 notes).
 
 Phase 4 was reviewed and signed off by the user on 2026-07-29.
-Phases 5, 6a, 6b, 7, 8, 9, 10, 11 and 12 are built and awaiting review.
+Phases 5, 6a, 6b, 7, 8, 9, 10, 11, 12 and 13 are built and awaiting review.
+
+### Phase 13 notes — integrated toolbar
+Built to a supplied measurement spec plus two mockups (page mode, book mode).
+Structural, not just a restyle: the scrub bar moved out of `#refine-browse`
+(under the book) into the bottom `.controls` pill, as a sibling of the mode
+toggle and PRINT IT rather than Refine-only chrome.
+
+- **One shell now, not two.** `.mode-toggle` used to carry its own white
+  background/radius/shadow as a self-contained pill next to PRINT IT. That
+  styling moved to a new `.toolbar` wrapper around all three controls;
+  `.mode-toggle` is just a flex item now. `.print-btn--modal` (the fold-guide's
+  download button) already overrides height/padding/font-size in full, so the
+  new base `.print-btn` sizing (38px height, `7px 8px` padding, 16px font)
+  doesn't reach it — same pattern as the phase-1 sizing pass.
+- **The scrubber is a flex item that animates its own width**, not a
+  show/hide. `.scrubber` is 0-width + `overflow: hidden` at rest and expands
+  to `--scrub-w` only when `.mode-toggle[data-mode="refine"]` — read off the
+  same `dataset.mode` write `setMode()` already does, no new state. Width
+  *and* `margin-right` both animate together (`--morph-duration`/
+  `--morph-ease`, matching the toggle's own thumb-slide token), or a 0-width
+  scrubber would still hold its own gap open next to PRINT IT — the fixed gap
+  after the separator lives on `.toolbar-sep` itself instead, so collapsed and
+  expanded states both read as one continuous gap, never a doubled one.
+- **Losing free hiding was the real risk here, not the animation.** The old
+  scrub bar sat inside `#refine-browse`, so Arrange (`refineEl.hidden`) and
+  the crop editor (`browseEl.hidden`) both stripped its tab stop for free.
+  Living in the always-visible toolbar now, it needs that made explicit:
+  `syncChrome()` sets `scrubberEl.inert` whenever the booklet spread isn't the
+  visible surface (`state.mode !== "refine" || state.editing !== null`), and
+  `openEditor()`/`closeEditor()` now call `syncChrome()` (they only called
+  `renderRefine()` before) so opening the crop editor disables the bar rather
+  than leaving it draggable behind the flat page.
+- **The book gained ~42px of height it didn't have before.** With no scrub
+  bar to clear below it any more, `layoutSurfaces()`'s divisor for the
+  perspective bulge simplified from `(1 + 3k)` (funding the bulge below via
+  `--scrub-gap` AND above, three times over — § Phase 12 notes) down to
+  `(1 + 2k)` (bulge above and below only, nothing left to clear). `--scrub-gap`
+  itself, `SCRUB_BAR_H` and `SCRUB_GAP_MIN` are all gone — dead once the
+  scrubber left `.refine-browse`, which now just centres the book alone.
+- **Same recipe as `.mode-toggle-track`, reused rather than reinvented.** The
+  "slider container" spec (40px tall, `#f2f2f2`, `inset 0 0 3px rgba(0,0,0,.2)`)
+  is the exact same visual formula the mode toggle's own track already uses —
+  so the two controls read as one family. `--scrub-border-w` dropped to `0`
+  (no border in the new spec) and `--scrub-pad` grew to `4px` to match; every
+  formula built on those tokens (`--scrub-inner`, the thumb's `top`/`height`,
+  `sceneFromPointer` in script.js) re-resolves automatically — none of them
+  needed touching by hand, which is the whole point of the token pipeline
+  documented in §13.
+- **The 5 stops are carved, not counted.** Discussed with the user before
+  building: the supplied spec called for ~36 evenly-spaced tick marks, but the
+  control only has 5 real stops (one per `SPREADS` entry) — a tick count tied
+  to neither would misrepresent the control (AppKit ties tick count to
+  `allowsTickMarkValuesOnly` for exactly this reason). Landed on carving
+  instead of counting: `.scrub-tick` is now a 1px dark line with a 1px light
+  line beside it (`box-shadow`), reading as a groove notched into the track
+  under the same top-lit source `.mode-toggle-track` and `.scrub-thumb`
+  already use, rather than a printed dot or a mismatched tick count. Position
+  formula is unchanged from Phase 12 — only the visual treatment moved.
+- **Not touched: `.scrub-thumb`'s own face.** Still the phase-12 gradient +
+  two-rectangle treatment at a literal 52px width. The user asked for this
+  explicitly deferred ("we'll work on the slider button styling later") —
+  its `top`/`height` still resize for free off the new `--scrub-h`/
+  `--scrub-pad` tokens, but its width and decoration are unchanged.
+- **Unverified live**, same as every other phase: dragging the scrub bar in
+  its new home, the open/close animation itself (vs. just its start/end
+  state), and the crop editor's now-inert bar mid-edit all need a real photo
+  loaded to try, which is the user's pass to make.
 
 ### Phase 12 notes — scrub bar restyle
 Built to a supplied spec (280x24px pill, 1px `#F2F2F2` border, `0 0 2px

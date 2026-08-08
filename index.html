@@ -26,11 +26,7 @@
 <div class="bg-texture" aria-hidden="true"></div>
 
 <div class="hint" aria-hidden="true">
-  <svg class="hint-arrow" width="70" height="70" viewBox="0 0 70 70" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M55 8C52 28 40 42 20 48" stroke="#8a8f96" stroke-width="1.6" stroke-linecap="round" fill="none"/>
-    <path d="M9 39C11 43 14 47 20 48C17 44 15 40 15 35" stroke="#8a8f96" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-  </svg>
-  <span class="hint-text">Drag or tap to add<br />your pics !</span>
+  <img class="hint-arrow" src="assets/images/arrow.png" alt="" />
 </div>
 
 <div class="app">
@@ -59,20 +55,6 @@
           <div class="book-paper" aria-hidden="true"></div>
           <!-- leaves built by script.js -->
         </div>
-
-        <!--
-          Scrub bar — navigation and position indicator in one control. Drag it
-          to flip spreads. Dots are rendered from SPREADS by script.js, so they
-          stay correct if the folding ever changes. No visible labels; position
-          is still announced via aria-valuetext.
-        -->
-        <div class="scrubber" id="scrubber">
-          <div class="scrub-track" id="scrub-track" role="slider" tabindex="0"
-               aria-label="Booklet position" aria-valuemin="0" aria-valuemax="4"
-               aria-valuenow="0" aria-valuetext="Cover">
-            <div class="scrub-thumb" id="scrub-thumb"></div>
-          </div>
-        </div>
       </div>
 
       <div class="editor" id="editor" hidden>
@@ -89,23 +71,43 @@
   </div>
 
   <footer class="controls">
-    <div class="mode-toggle" role="group" aria-label="View mode" data-mode="arrange">
-      <div class="mode-toggle-track">
-        <button class="mode-btn active" type="button" data-mode="arrange" data-tip="Arrange">
-          <img src="assets/images/container.svg" alt="Arrange" />
-        </button>
-        <button class="mode-btn" type="button" data-mode="refine" data-tip="Refine">
-          <img src="assets/images/book-open.svg" alt="Refine" />
-        </button>
-        <div class="mode-toggle-thumb" aria-hidden="true">
-          <div class="mode-toggle-ink">
-            <span class="mode-toggle-ink-icon mode-toggle-ink-icon--arrange"></span>
-            <span class="mode-toggle-ink-icon mode-toggle-ink-icon--refine"></span>
+    <div class="toolbar" id="toolbar">
+      <div class="mode-toggle" role="group" aria-label="View mode" data-mode="arrange">
+        <div class="mode-toggle-track">
+          <button class="mode-btn active" type="button" data-mode="arrange" data-tip="Arrange">
+            <img src="assets/images/container.svg" alt="Arrange" />
+          </button>
+          <button class="mode-btn" type="button" data-mode="refine" data-tip="Refine">
+            <img src="assets/images/book-open.svg" alt="Refine" />
+          </button>
+          <div class="mode-toggle-thumb" aria-hidden="true">
+            <div class="mode-toggle-ink">
+              <span class="mode-toggle-ink-icon mode-toggle-ink-icon--arrange"></span>
+              <span class="mode-toggle-ink-icon mode-toggle-ink-icon--refine"></span>
+            </div>
           </div>
         </div>
       </div>
+
+      <div class="toolbar-sep" aria-hidden="true"></div>
+
+      <!--
+        Scrub bar — navigation and position indicator in one control, expands
+        into view only in Refine (book) mode. Drag it to flip spreads. Ticks
+        are rendered from SPREADS by script.js, so they stay correct if the
+        folding ever changes. No visible labels; position is still announced
+        via aria-valuetext.
+      -->
+      <div class="scrubber" id="scrubber">
+        <div class="scrub-track" id="scrub-track" role="slider" tabindex="0"
+             aria-label="Booklet position" aria-valuemin="0" aria-valuemax="4"
+             aria-valuenow="0" aria-valuetext="Cover">
+          <div class="scrub-thumb" id="scrub-thumb"></div>
+        </div>
+      </div>
+
+      <button class="print-btn" id="print-btn" type="button" data-tip="How to fold it, then the PDF">PRINT IT</button>
     </div>
-    <button class="print-btn" id="print-btn" type="button" data-tip="How to fold it, then the PDF">PRINT IT</button>
   </footer>
 </div>
 

@@ -33,6 +33,7 @@ const browseEl = document.getElementById("refine-browse");
 const bookEl = document.getElementById("book");
 const editorEl = document.getElementById("editor");
 const editorFrame = document.getElementById("editor-frame");
+const scrubberEl = document.getElementById("scrubber");
 const scrubTrack = document.getElementById("scrub-track");
 const scrubThumb = document.getElementById("scrub-thumb");
 const zoomSlider = document.getElementById("zoom-slider");
@@ -501,6 +502,12 @@ function buildEmptyPlaceholder(index) {
       openPicker(index, "fill");
     }
   });
+
+  const label = document.createElement("span");
+  label.className = "slot-empty-label";
+  label.textContent = "Upload image";
+  empty.appendChild(label);
+
   return empty;
 }
 
@@ -1314,9 +1321,9 @@ const LAST_SPREAD = SPREADS.length - 1;
 // subtracted) the thumb travels across. --scrub-thumb-w is a literal in
 // :root, not derived, so it's read with token() rather than recomputed here
 // — same source both sides, so they can't drift.
-const SCRUB_BORDER_PX = token("--scrub-border-w", 1);
-const SCRUB_PAD_PX = token("--scrub-pad", 2);
-const SCRUB_INNER_PX = token("--scrub-w", 280) - SCRUB_BORDER_PX * 2;
+const SCRUB_BORDER_PX = token("--scrub-border-w", 0);
+const SCRUB_PAD_PX = token("--scrub-pad-x", 8); // horizontal inset — --scrub-pad is vertical only
+const SCRUB_INNER_PX = token("--scrub-w", 320) - SCRUB_BORDER_PX * 2;
 const SCRUB_THUMB_PX = token("--scrub-thumb-w", 52);
 const SCRUB_TRAVEL_PX = SCRUB_INNER_PX - SCRUB_PAD_PX * 2 - SCRUB_THUMB_PX;
 
@@ -1335,20 +1342,41 @@ function spreadAria(index) {
   return `Pages ${pages.join(" and ")}`;
 }
 
-// SPREADS is fixed, so the ticks are built once and only restyled afterwards
-// — no DOM churn on every flip.
+// Ground texture, aligned to the real stops rather than independent of them:
+// 29 grid positions (28 gaps) means every 7th (28 / LAST_SPREAD) lands
+// exactly on a SPREADS fraction, so that one is skipped in favour of the
+// taller .scrub-tick--stop drawn at that same position below — 6 dots
+// between each pair of stops, and the two tiers share positions instead of
+// drifting past each other. Only exact if (SCRUB_MARK_COUNT - 1) divides
+// evenly by LAST_SPREAD; keep them in step if either ever changes.
+const SCRUB_MARK_COUNT = 29;
+const SCRUB_STOP_STRIDE = (SCRUB_MARK_COUNT - 1) / LAST_SPREAD;
+
 function buildScrubber() {
   scrubTrack.setAttribute("aria-valuemax", String(LAST_SPREAD));
   scrubTrack.querySelectorAll(".scrub-tick").forEach((el) => el.remove());
 
-  SPREADS.forEach((_, index) => {
+  for (let i = 0; i < SCRUB_MARK_COUNT; i++) {
+    if (i % SCRUB_STOP_STRIDE === 0) continue; // a stop mark lands here instead
     const tick = document.createElement("div");
     tick.className = "scrub-tick";
-    tick.style.setProperty("--tick-pos", String(spreadFraction(index)));
+    tick.style.setProperty("--tick-pos", String(i / (SCRUB_MARK_COUNT - 1)));
     tick.setAttribute("aria-hidden", "true");
-    // Appended after the thumb (already in index.html), which is what keeps
-    // it painting on top — see .scrub-thumb's z-index in styles.css.
+    // Appended after the thumb (already in index.html); its z-index:2 is
+    // what keeps IT painting on top, covering whichever marks it's parked
+    // over — see .scrub-thumb in styles.css.
     scrubTrack.appendChild(tick);
+  }
+
+  // Taller marks at each real stop — where a spread actually sits flat, a
+  // turn never parks mid-way — reusing spreadFraction(), the same fraction
+  // the thumb itself parks on, so these can't drift from the real stops.
+  SPREADS.forEach((_, index) => {
+    const stop = document.createElement("div");
+    stop.className = "scrub-tick scrub-tick--stop";
+    stop.style.setProperty("--tick-pos", String(spreadFraction(index)));
+    stop.setAttribute("aria-hidden", "true");
+    scrubTrack.appendChild(stop);
   });
 
   // Arrange is the opening mode, so the first render() never reaches the book —
@@ -1460,11 +1488,13 @@ scrubTrack.addEventListener("keydown", (e) => {
 function openEditor(index) {
   state.editing = index;
   renderRefine();
+  syncChrome();
 }
 
 function closeEditor() {
   state.editing = null;
   renderRefine();
+  syncChrome();
 }
 
 function editingPhoto() {
@@ -2277,6 +2307,11 @@ function syncChrome() {
   const count = photoCount();
   // The hint points at the empty Arrange grid, so it has no business in Refine.
   hintEl.classList.toggle("is-hidden", count > 0 || state.mode !== "arrange");
+  // The scrub bar now lives in the always-visible toolbar (phase 13), not
+  // inside #refine-browse — it no longer gets tabindex/focus stripped for
+  // free by that element's `hidden` when collapsed in Arrange or covered by
+  // the crop editor. inert does both jobs explicitly.
+  scrubberEl.inert = !(state.mode === "refine" && state.editing === null);
 }
 
 // Browsers ignore custom text here and show their own generic dialog.
@@ -2344,8 +2379,6 @@ document.addEventListener("drop", (e) => {
 
 const GRID_GAP = 22;
 const SAFETY_MARGIN = 2;
-const SCRUB_BAR_H = token("--scrub-h", 24); // the pill itself
-const SCRUB_GAP_MIN = 18; // clearance floor atop the computed perspective bulge
 const CONTROLS_RESERVE = 66; // crop controls beneath the editor frame
 
 /**
@@ -2393,7 +2426,11 @@ function layoutSurfaces() {
     parseFloat(pad.paddingLeft) -
     parseFloat(pad.paddingRight) -
     SAFETY_MARGIN;
-  const availH = wrap.clientHeight - SAFETY_MARGIN;
+  const availH =
+    wrap.clientHeight -
+    parseFloat(pad.paddingTop) -
+    parseFloat(pad.paddingBottom) -
+    SAFETY_MARGIN;
 
   setTileVars("--tile-w", "--tile-h", fitTiles(availW, availH, 4, 2, GRID_GAP));
   // The book is BOOK_SPAN page-widths across, not 2 — the fan overhangs the
@@ -2401,25 +2438,20 @@ function layoutSurfaces() {
   // column count, which with no gap reduces to availW / BOOK_SPAN.
   //
   // The height budget also has to leave room for the turning page's own
-  // bulge, not just the scrub bar's box. Mid-turn a leaf is edge-on, and its
-  // outer edge — magnified by perspective toward the viewer — overshoots its
-  // resting box by roughly pageH / (2 * (PERSPECTIVE_RATIO - 1)) on each side
-  // (k * pageH below), symmetric above AND below the leaf's own vertical
-  // centre. .refine centers the book+scrubber block in .grid-wrap, so the
-  // slack above the book equals the slack below the scrubber — and with
-  // .grid-wrap's overflow: hidden gone (§10, 2026-08-02), an unbudgeted top
-  // bulge is free to bleed into the header above rather than being clipped.
+  // bulge. Mid-turn a leaf is edge-on, and its outer edge — magnified by
+  // perspective toward the viewer — overshoots its resting box by roughly
+  // pageH / (2 * (PERSPECTIVE_RATIO - 1)) on each side (k * pageH below),
+  // symmetric above AND below the leaf's own vertical centre. .refine
+  // centres the book alone in .grid-wrap now (phase 13 moved the scrub bar
+  // into the bottom toolbar, so there's no sibling below it to budget for
+  // any more) — with .grid-wrap's overflow: hidden gone (§10, 2026-08-02),
+  // an unbudgeted bulge is free to bleed into the padding around it.
   //
-  // So the budget has to fund the bulge three times over, not once: below
-  // the book (folded into --scrub-gap, which also adds SCRUB_GAP_MIN of
-  // breathing room against the scrub bar) AND above it (the centred slack,
-  // which needs no extra minimum — there's no adjacent control up there to
-  // clear, just the header text). Dividing by (1 + 3k) is that closed form:
-  // pageH*(1+3k) + SCRUB_GAP_MIN + SCRUB_BAR_H lands exactly at availH, which
-  // leaves (H - blockHeight)/2 = k*pageH of slack on each side of the block —
-  // exactly the bulge, so it's self-consistent rather than an iterated guess.
+  // Solving slack_above = slack_below = k*pageH for the divisor: blockHeight
+  // (= pageH, just the book) has to leave (availH - pageH)/2 of slack on
+  // each side equal to the bulge, i.e. pageH = availH / (1 + 2k).
   const k = 0.5 / (PERSPECTIVE_RATIO - 1);
-  const bookAvailH = (availH - SCRUB_BAR_H - SCRUB_GAP_MIN) / (1 + 3 * k);
+  const bookAvailH = availH / (1 + 2 * k);
   const book = fitTiles(availW, bookAvailH, BOOK_SPAN, 1, 0);
   setTileVars("--page-w", "--page-h", book);
   // Mirror what setTileVars actually wrote, so the book's maths and the CSS
@@ -2430,12 +2462,6 @@ function layoutSurfaces() {
   document.documentElement.style.setProperty(
     "--perspective",
     `${Math.round(pageW * PERSPECTIVE_RATIO)}px`
-  );
-  // The clearance the turning page's bulge actually needs at the page size
-  // just computed — consumed by .refine-browse's gap.
-  document.documentElement.style.setProperty(
-    "--scrub-gap",
-    `${Math.round(k * pageH + SCRUB_GAP_MIN)}px`
   );
   setTileVars(
     "--edit-w",
